@@ -1,4 +1,4 @@
-# Documentation
+# Journal
 
 This documentation describes my try to use Software Design Document (SDD) to
 create a private chat application. This IS NOT the documentation of the system
