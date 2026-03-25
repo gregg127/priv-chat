@@ -1,0 +1,10 @@
+{
+  "name": "priv-chat",
+  "version": "1.0.0",
+  "scripts": {
+    "docs": "docsify serve docsify --open"
+  },
+  "dependencies": {
+    "docsify-cli": "^4.4.4"
+  }
+}
