@@ -19,20 +19,23 @@ npm run journal   # Serve journal locally via docsify
 npm run github    # Serve .github/ (agents & prompts) locally via markserv
 ```
 
-## Spec-Driven Development (SDD) Workflow
+## SDD Workflow
 
-Features flow through this agent pipeline in order:
+Invoke each step as a slash command in Copilot Chat (from `.github/prompts/`):
 
-1. **`speckit.constitution`** — Define/update project principles (`.specify/memory/constitution.md`)
-2. **`speckit.specify`** — Create feature spec → `specs/###-feature-name/spec.md`
-3. **`speckit.clarify`** — Up to 5 targeted questions to sharpen the spec
-4. **`speckit.plan`** — Generate design artifacts → `plan.md`, `research.md`, `data-model.md`, `contracts/`
-5. **`speckit.tasks`** — Break plan into ordered tasks → `tasks.md`
-6. **`speckit.analyze`** — Cross-artifact consistency check (non-destructive)
-7. **`speckit.implement`** — Execute tasks; resulting code goes into `implementation/`
+| Slash Command | Purpose |
+|---|---|
+| `/speckit.constitution` | Define/update project principles → `.specify/memory/constitution.md` |
+| `/speckit.specify` | Create feature spec → `specs/###-feature-name/spec.md` |
+| `/speckit.clarify` | Ask up to 5 targeted questions to sharpen the spec |
+| `/speckit.plan` | Generate design artifacts (`plan.md`, `research.md`, `data-model.md`, `contracts/`) |
+| `/speckit.tasks` | Break plan into ordered tasks → `tasks.md` |
+| `/speckit.analyze` | Cross-artifact consistency check (non-destructive) |
+| `/speckit.implement` | Execute tasks; resulting code goes into `implementation/` |
+| `/speckit.checklist` | Generate a custom feature checklist |
+| `/speckit.taskstoissues` | Convert tasks into GitHub issues |
 
-Agents: `.github/agents/speckit.*.agent.md`  
-Prompts: `.github/prompts/speckit.*.prompt.md`
+Run these in order for each feature.
 
 ## Key Conventions
 
