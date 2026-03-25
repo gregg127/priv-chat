@@ -15,7 +15,8 @@ The `journal/` directory contains development process notes. No application sour
 ## Commands
 
 ```bash
-npm run docs   # Serve journal docs locally via docsify (run from repo root)
+npm run journal   # Serve journal locally via docsify
+npm run github    # Serve .github/ (agents & prompts) locally via markserv
 ```
 
 ## Spec-Driven Development (SDD) Workflow
