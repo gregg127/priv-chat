@@ -1,0 +1,14 @@
+spring:
+  cloud:
+    gateway:
+      mvc:
+        routes:
+          - id: entry-auth-service
+            uri: ${ENTRY_AUTH_SERVICE_URL:http://entry-auth-service:8080}
+            predicates:
+              - Path=/auth/**
+            filters:
+              - AddRequestHeader=X-Forwarded-For, {remoteAddr}
+
+server:
+  port: 8080

@@ -1,0 +1,69 @@
+version: '3.9'
+
+networks:
+  privchat-net:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-privchat}
+      POSTGRES_USER: ${POSTGRES_USER:-privchat}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - privchat-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-privchat} -d ${POSTGRES_DB:-privchat}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  entry-auth-service:
+    build:
+      context: ./services/entry-auth-service
+      dockerfile: Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-privchat}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-privchat}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      NETWORK_PASSWORD: ${NETWORK_PASSWORD:-changeme}
+      SESSION_TIMEOUT_SECONDS: ${SESSION_TIMEOUT_SECONDS:-86400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - privchat-net
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ENTRY_AUTH_SERVICE_URL: http://entry-auth-service:8080
+    depends_on:
+      - entry-auth-service
+    networks:
+      - privchat-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      API_GATEWAY_URL: http://api-gateway:8080
+      NODE_ENV: production
+    depends_on:
+      - api-gateway
+    networks:
+      - privchat-net
+
+volumes:
+  postgres_data:
