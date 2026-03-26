@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "journal": "docsify serve journal/ --open",
-    "github": "markserv .github/"
+    "github": "markserv .github/",
+    "specification": "markserv .specify/memory/"
   },
   "dependencies": {
     "docsify-cli": "^4.4.4",
