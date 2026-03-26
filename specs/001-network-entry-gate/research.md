@@ -130,7 +130,7 @@
       .build();
   return Bucket.builder().addLimit(limit).build();
   ```
-- On limit exceeded: return HTTP 429 with `Retry-After` header and log a `RATE_LIMIT_TRIGGERED` security event.
+- On limit exceeded: return HTTP 429 with `Retry-After` header and log a `RATE_LIMITED` security event.
 - **Memory leak mitigation**: Schedule periodic eviction of buckets last accessed more than 20 minutes ago (using `Caffeine` cache with expiry as the map backing, or a simple scheduled cleanup task).
 - Rate limiting applies to _attempts_ (including failed ones), not just failures — simplest and most conservative policy for v1.
 
@@ -138,7 +138,7 @@
 
 ## 5. Security Event Logging
 
-**Decision**: Dedicated `audit_log` table managed by JPA + `AuditEventService` bean; SLF4J/Logback for operational logging only
+**Decision**: Dedicated `security_audit_log` table managed by JPA + `AuditEventService` bean; SLF4J/Logback for operational logging only
 
 **Rationale**: Security events (failed auth, successful join, rate-limit triggers) are structured business data, not operational log noise. A dedicated PostgreSQL table allows querying, dashboards, and compliance review. Logback DB appender writes semi-structured text into generic schema columns — harder to query and report on. The JPA approach gives full control over the schema and enables future alerting queries (e.g., "IPs with >3 lockouts in 1 hour").
 
@@ -150,16 +150,15 @@
 **Key Notes**:
 - Schema:
   ```sql
-  CREATE TABLE audit_log (
+  CREATE TABLE security_audit_log (
     id          BIGSERIAL PRIMARY KEY,
-    event_type  VARCHAR(64)  NOT NULL,  -- FAILED_AUTH, JOIN_SUCCESS, RATE_LIMIT_TRIGGERED
-    ip_address  INET         NOT NULL,
-    username    VARCHAR(255),           -- null if not yet resolved
-    detail      TEXT,                   -- freeform JSON detail blob
+    event_type  VARCHAR(50)  NOT NULL CHECK (event_type IN ('JOIN_SUCCESS','JOIN_FAILURE','RATE_LIMITED')),
+    ip_address  VARCHAR(45)  NOT NULL,
+    username    VARCHAR(64),            -- null for JOIN_FAILURE and RATE_LIMITED events
     occurred_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
   );
-  CREATE INDEX idx_audit_log_ip ON audit_log (ip_address, occurred_at DESC);
-  CREATE INDEX idx_audit_log_type ON audit_log (event_type, occurred_at DESC);
+  CREATE INDEX idx_security_audit_log_ip ON security_audit_log (ip_address, occurred_at DESC);
+  CREATE INDEX idx_security_audit_log_type ON security_audit_log (event_type, occurred_at DESC);
   ```
 - Use `INET` PostgreSQL type for IP addresses (supports IPv4 and IPv6, enables subnet queries).
 - Inject an `AuditLogRepository extends JpaRepository<AuditLog, Long>` and call it from the auth service layer after each event.
@@ -281,7 +280,7 @@
 
 | Threat | Mitigation | Residual Risk |
 |--------|-----------|---------------|
-| **Brute force (password guessing)** | Bucket4j rate limiter: 5 attempts / 10 min per IP; HTTP 429 with `Retry-After`; `RATE_LIMIT_TRIGGERED` audit event | Distributed attack from many IPs bypasses single-IP limit; mitigated in future by CAPTCHA or shared-secret rotation |
+| **Brute force (password guessing)** | Bucket4j rate limiter: 5 attempts / 10 min per IP; HTTP 429 with `Retry-After`; `RATE_LIMITED` audit event | Distributed attack from many IPs bypasses single-IP limit; mitigated in future by CAPTCHA or shared-secret rotation |
 | **Credential stuffing (shared network password)** | Shared network password can be rotated; rate limiting slows automated tooling; audit log alerts on spike in failed attempts | If the shared password leaks, all protection depends on rate limiting until rotation |
 | **Session hijacking** | `HttpOnly` prevents JS access; `Secure` enforces HTTPS-only transmission; `SameSite=Strict` blocks CSRF-based session theft | Compromised TLS or endpoint device still exposes cookie |
 | **Session fixation** | Spring Session regenerates session ID on successful authentication (`SessionManagementFilter` / explicit `sessionRegistry.invalidateHttpSessions`) | Low residual risk with Spring Security defaults |
