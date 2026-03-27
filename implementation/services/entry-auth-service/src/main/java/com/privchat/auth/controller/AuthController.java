@@ -83,7 +83,7 @@ public class AuthController {
         AuthService.SessionInfo info = authService.checkSession(session);
         if (!info.authenticated()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(Map.of("error", "Not authenticated"));
+                .body(Map.of("error", "No active session"));
         }
         authService.logout(session);
         return ResponseEntity.ok(Map.of("message", "Signed out"));

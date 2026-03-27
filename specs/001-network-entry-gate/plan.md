@@ -15,7 +15,7 @@ project constitution.
 ## Technical Context
 
 **Language/Version**: Java 25 LTS (backend), TypeScript / React 19 (frontend)
-**Primary Dependencies**: Spring Boot 4.0.4, Spring Cloud Gateway 5.0.x (Oakwood),
+**Primary Dependencies**: Spring Boot 4.0.4, Spring Boot Web (API Gateway — custom RestClient-based reverse proxy),
   Spring Session JDBC, Bucket4j 8.x (rate limiting), jOOQ 3.20.x (data access),
   nu.studer.jooq 9.0 (Gradle codegen plugin), Next.js 15 + React 19 (frontend),
   Node.js 22 (Next.js runtime in Docker)
@@ -78,9 +78,12 @@ implementation/
 ├── docker-compose.yml
 ├── docker-compose.override.yml     # local dev overrides (hot reload, etc.)
 │
-├── api-gateway/                    # Spring Cloud Gateway
+├── api-gateway/                    # Custom reverse proxy (Spring Boot + RestClient)
 │   ├── src/main/resources/
-│   │   └── application.yml         # routing rules
+│   │   └── application.yml         # service URLs, logging
+│   ├── src/main/java/com/privchat/gateway/
+│   │   ├── proxy/                  # AuthProxyController — forwards /auth/** to entry-auth-service
+│   │   └── filter/                 # RequestLoggingFilter
 │   ├── Dockerfile
 │   └── build.gradle
 │

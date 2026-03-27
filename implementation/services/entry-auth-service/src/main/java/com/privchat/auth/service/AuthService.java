@@ -42,14 +42,14 @@ public class AuthService {
 
         // 2. Check rate limit
         if (!rateLimitService.tryConsume(ipAddress)) {
-            auditLogService.log(new SecurityAuditLog("RATE_LIMITED", ipAddress, trimmedUsername));
-            throw new RateLimitedException("Too many attempts. Please try again later.", 600L);
+            auditLogService.log(new SecurityAuditLog("RATE_LIMITED", ipAddress, null));
+            throw new RateLimitedException("Too many attempts — please try again in 10 minutes", 600L);
         }
 
         // 3. Verify password
         if (!networkPassword.equals(password)) {
-            auditLogService.log(new SecurityAuditLog("JOIN_FAILURE", ipAddress, trimmedUsername));
-            throw new InvalidPasswordException("Invalid network password");
+            auditLogService.log(new SecurityAuditLog("JOIN_FAILURE", ipAddress, null));
+            throw new InvalidPasswordException("Incorrect network password");
         }
 
         // 4. Create session

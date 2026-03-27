@@ -176,17 +176,9 @@ All error responses follow the same shape:
 
 ## Gateway Routing Configuration
 
-The API gateway routes `/auth/**` → `entry-auth-service:8080`. All other routes
-will be added in future features.
+The API gateway (`AuthProxyController`) forwards all requests matching `/auth/**` to
+`entry-auth-service:8080` using Spring's `RestClient`. All request headers are forwarded;
+`X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` are added automatically.
 
-```yaml
-# api-gateway/src/main/resources/application.yml (excerpt)
-spring:
-  cloud:
-    gateway:
-      routes:
-        - id: entry-auth-service
-          uri: http://entry-auth-service:8080
-          predicates:
-            - Path=/auth/**
-```
+The entry-auth-service is not exposed outside the Docker network; all traffic must pass
+through the gateway on port 8080.

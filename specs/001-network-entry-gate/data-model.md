@@ -41,8 +41,13 @@ client as an HttpOnly, Secure, SameSite=Strict cookie.
 - Extended: on every authenticated request (rolling expiry)
 - Destroyed: on `DELETE /auth/session` (explicit logout) or server-side expiry
 
-**Expiry**: Configurable via `server.servlet.session.timeout` (default: 24 hours
-of inactivity). Spring Session JDBC cleanup task removes expired rows.
+**Expiry**: Configurable via `SESSION_TIMEOUT_SECONDS` environment variable (default: 86400 s / 24 hours).
+Applied at startup via `JdbcIndexedSessionRepository.setDefaultMaxInactiveInterval()`.
+Spring Session JDBC cleanup task removes expired rows.
+
+**Cookie flags**: `HttpOnly=true`, `SameSite=Strict`, `Path=/`. The `Secure` flag is
+controlled by the `SESSION_COOKIE_SECURE` environment variable (default: `false` for
+local HTTP development; set to `true` in production behind HTTPS).
 
 ---
 
