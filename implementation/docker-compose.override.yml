@@ -2,13 +2,13 @@ version: '3.9'
 
 # Local development overrides
 # Usage: docker compose up  (automatically merges with docker-compose.yml)
+# Note: Java services run pre-built JARs — source volume mounts have no effect.
+#       Rebuild with: docker compose up --build
 
 services:
   entry-auth-service:
     environment:
       SPRING_PROFILES_ACTIVE: dev
-    volumes:
-      - ./services/entry-auth-service/src:/app/src:ro
 
   api-gateway:
     environment:
