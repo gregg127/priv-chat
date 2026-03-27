@@ -1,0 +1,27 @@
+---
+logging:
+  level:
+    root: INFO
+    org.flywaydb: DEBUG
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/privchat}
+    username: ${SPRING_DATASOURCE_USERNAME:privchat}
+    password: ${SPRING_DATASOURCE_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: false
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never
+server:
+  port: 8080
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

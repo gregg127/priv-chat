@@ -1,0 +1,5 @@
+.env
+*.env.local
+# jOOQ generated sources (produced by `./gradlew generateJooq`)
+services/entry-auth-service/build/
+api-gateway/build/

@@ -1,0 +1,21 @@
+---
+spring:
+  application:
+    name: api-gateway
+services:
+  auth:
+    url: ${ENTRY_AUTH_SERVICE_URL:http://entry-auth-service:8080}
+server:
+  port: 8080
+logging:
+  level:
+    root: INFO
+    com.privchat.gateway: INFO
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

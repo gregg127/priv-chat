@@ -2,9 +2,10 @@
   "name": "priv-chat",
   "version": "1.0.0",
   "scripts": {
-    "journal": "docsify serve journal/ --open",
+    "journal": "docsify serve journal/ --port 3001 --open",
     "github": "markserv .github/",
-    "specification": "markserv .specify/memory/"
+    "specification": "markserv .specify/",
+    "features": "markserv specs/"
   },
   "dependencies": {
     "docsify-cli": "^4.4.4",

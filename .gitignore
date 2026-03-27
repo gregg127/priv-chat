@@ -1,1 +1,40 @@
 node_modules/
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+target/
+*.class
+*.jar
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Gradle
+.gradle/
+
+# Java
+*.class
+*.jar
+*.war
+
+# Python (if ever used in tooling)
+__pycache__/
+*.pyc
