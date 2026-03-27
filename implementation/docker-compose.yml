@@ -1,9 +1,8 @@
+---
 version: '3.9'
-
 networks:
   privchat-net:
     driver: bridge
-
 services:
   postgres:
     image: postgres:17-alpine
@@ -11,17 +10,17 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-privchat}
       POSTGRES_USER: ${POSTGRES_USER:-privchat}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - privchat-net
+    ports: [5432:5432]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [privchat-net]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-privchat} -d ${POSTGRES_DB:-privchat}"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-privchat} -d ${POSTGRES_DB:-privchat}
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
-
   entry-auth-service:
     build:
       context: ./services/entry-auth-service
@@ -35,35 +34,35 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - privchat-net
-
+    networks: [privchat-net]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8080/actuator/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+    ports: [8080:8080]
     environment:
       ENTRY_AUTH_SERVICE_URL: http://entry-auth-service:8080
     depends_on:
-      - entry-auth-service
-    networks:
-      - privchat-net
-
+      entry-auth-service:
+        condition: service_healthy
+    networks: [privchat-net]
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    ports: [3000:3000]
     environment:
       API_GATEWAY_URL: http://api-gateway:8080
       NODE_ENV: production
-    depends_on:
-      - api-gateway
-    networks:
-      - privchat-net
-
+    depends_on: [api-gateway]
+    networks: [privchat-net]
 volumes:
   postgres_data:

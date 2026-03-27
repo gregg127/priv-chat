@@ -12,7 +12,7 @@ Represents an authenticated presence in the portal. Managed by Spring Session
 JDBC, stored in PostgreSQL. The session ID is opaque and delivered to the
 client as an HttpOnly, Secure, SameSite=Strict cookie.
 
-**Table**: `spring_session` (managed by Spring Session JDBC auto-schema)
+**Table**: `spring_session` (managed by Flyway `V2__create_spring_session.sql`)
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -24,7 +24,7 @@ client as an HttpOnly, Secure, SameSite=Strict cookie.
 | `EXPIRY_TIME` | `BIGINT` | NOT NULL | Computed expiry epoch millis (indexed) |
 | `PRINCIPAL_NAME` | `VARCHAR(100)` | NULLABLE | Display name chosen by the user |
 
-**Table**: `spring_session_attributes` (Spring Session JDBC attribute store)
+**Table**: `spring_session_attributes` (managed by Flyway `V2__create_spring_session.sql`)
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
@@ -49,7 +49,8 @@ of inactivity). Spring Session JDBC cleanup task removes expired rows.
 ### SecurityAuditLog
 
 An append-only server-side log of security-relevant events on the entry gate.
-Required by constitution (Security Requirements — Audit trail).
+Required by constitution (Security Requirements — Audit trail). Persisted via
+`AuditLogService` using jOOQ DSL (no JPA/Hibernate).
 
 **Table**: `security_audit_log`
 
@@ -71,6 +72,8 @@ Required by constitution (Security Requirements — Audit trail).
 - `(event_type, occurred_at DESC)` — for operational monitoring queries
 
 **Flyway migration**: `V1__create_security_audit_log.sql`
+**Java representation**: `com.privchat.auth.model.SecurityAuditLog` (plain Java record; no JPA)
+**jOOQ generated**: `com.privchat.auth.jooq.Tables.SECURITY_AUDIT_LOG` (produced by `./gradlew generateJooq`)
 
 ---
 
@@ -110,6 +113,5 @@ RateLimitBucket
 - **Location**: `implementation/services/entry-auth-service/src/main/resources/db/migration/`
 - **Migrations**:
   - `V1__create_security_audit_log.sql` — creates `security_audit_log` table + indexes
-  - Spring Session JDBC schema auto-created by Spring Session on first startup
-    (or via `schema.sql` if explicit control is needed)
+  - `V2__create_spring_session.sql` — creates `spring_session` + `spring_session_attributes` tables + indexes
 - **Naming convention**: `V{n}__{description}.sql` (sequential integer versions)

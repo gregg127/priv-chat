@@ -4,7 +4,8 @@
   "scripts": {
     "journal": "docsify serve journal/ --open",
     "github": "markserv .github/",
-    "specification": "markserv .specify/memory/"
+    "specification": "markserv .specify/",
+    "features": "markserv specs/"
   },
   "dependencies": {
     "docsify-cli": "^4.4.4",

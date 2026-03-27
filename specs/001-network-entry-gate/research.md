@@ -138,14 +138,14 @@
 
 ## 5. Security Event Logging
 
-**Decision**: Dedicated `security_audit_log` table managed by JPA + `AuditEventService` bean; SLF4J/Logback for operational logging only
+**Decision**: Dedicated `security_audit_log` table managed by jOOQ + `AuditLogService` bean; SLF4J/Logback for operational logging only
 
-**Rationale**: Security events (failed auth, successful join, rate-limit triggers) are structured business data, not operational log noise. A dedicated PostgreSQL table allows querying, dashboards, and compliance review. Logback DB appender writes semi-structured text into generic schema columns — harder to query and report on. The JPA approach gives full control over the schema and enables future alerting queries (e.g., "IPs with >3 lockouts in 1 hour").
+**Rationale**: Security events (failed auth, successful join, rate-limit triggers) are structured business data, not operational log noise. A dedicated PostgreSQL table allows querying, dashboards, and compliance review. Logback DB appender writes semi-structured text into generic schema columns — harder to query and report on. The jOOQ DSL approach gives full type-safe control over the schema and enables future alerting queries (e.g., "IPs with >3 lockouts in 1 hour").
 
 **Alternatives Considered**:
 - **Logback `DBAppender`**: Fast to set up, but unstructured. Not SQL-friendly for security analysis. Not transactionally linked to business operations. Rejected for primary security auditing.
 - **External log aggregator (ELK, Loki)**: Correct long-term solution, but out of scope for v1. Can be added later as a secondary sink.
-- **Spring Boot Actuator `AuditEventRepository`**: In-memory only by default; DB-backed implementation requires custom code equivalent to the JPA approach anyway.
+- **Spring Boot Actuator `AuditEventRepository`**: In-memory only by default; DB-backed implementation requires custom code equivalent to the jOOQ approach anyway.
 
 **Key Notes**:
 - Schema:
@@ -160,8 +160,8 @@
   CREATE INDEX idx_security_audit_log_ip ON security_audit_log (ip_address, occurred_at DESC);
   CREATE INDEX idx_security_audit_log_type ON security_audit_log (event_type, occurred_at DESC);
   ```
-- Use `INET` PostgreSQL type for IP addresses (supports IPv4 and IPv6, enables subnet queries).
-- Inject an `AuditLogRepository extends JpaRepository<AuditLog, Long>` and call it from the auth service layer after each event.
+- Use `VARCHAR(45)` for IP addresses (IPv4 or IPv6 max length).
+- Inject `AuditLogService` (wraps jOOQ `DSLContext`) and call it from `AuthService` after each event.
 - Keep audit writes **outside the main auth transaction** (use `@Transactional(propagation = REQUIRES_NEW)`) so a failed DB write doesn't roll back the auth response.
 - SLF4J/Logback continues to be used for operational debug/info/error output; audit events are additionally written to the DB table.
 - Do **not** log plaintext passwords or session IDs in any log.
@@ -286,7 +286,7 @@
 | **Session fixation** | Spring Session regenerates session ID on successful authentication (`SessionManagementFilter` / explicit `sessionRegistry.invalidateHttpSessions`) | Low residual risk with Spring Security defaults |
 | **CSRF (Cross-Site Request Forgery)** | `SameSite=Strict` cookie attribute is the primary mitigation for a same-origin SPA. Add Spring Security CSRF token for non-SameSite clients if required | Modern browsers enforce `SameSite=Strict`; very low residual risk |
 | **MITM (Man-in-the-Middle)** | `Secure` cookie flag; HTTPS enforced at Nginx; HSTS header (`Strict-Transport-Security: max-age=63072000; includeSubDomains`) | If TLS certificate is compromised or user ignores browser warning, MITM is possible |
-| **SQL Injection** | Spring Data JPA / parameterised queries everywhere; no string-concatenated SQL; `INET` type for IP prevents injection via that field | Negligible with parameterised queries; validate and sanitise all inputs at controller layer |
+| **SQL Injection** | jOOQ parameterised queries everywhere (type-safe DSL); no string-concatenated SQL | Negligible with parameterised queries; validate and sanitise all inputs at controller layer |
 | **Replay attacks (stolen session cookie)** | Short session TTL (30 min idle timeout); absolute session expiry enforced server-side; session invalidated on logout | Stolen cookie valid until TTL; out-of-band session revocation not in v1 scope |
 | **Secret exposure in source/logs** | Passwords and secrets via `.env` (not committed); `application.yml` uses `${ENV_VAR}` references; audit log never writes raw passwords or full session IDs | Developer error (committing `.env`) is the main residual risk; mitigated by `.gitignore` and pre-commit hooks |
 | **Enumeration of valid usernames** | Login endpoint returns identical error message and HTTP status (401) for both wrong password and unknown user; timing attack mitigated by constant-time comparison | Advanced timing analysis at network layer still theoretically possible |

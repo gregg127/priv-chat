@@ -10,7 +10,7 @@ COPY build.gradle .
 COPY settings.gradle .
 
 # Make gradlew executable
-RUN chmod +x gradlew
+RUN chmod +x gradlew;
 
 # Download dependencies (cached layer)
 RUN ./gradlew dependencies --no-daemon || true
@@ -19,7 +19,7 @@ RUN ./gradlew dependencies --no-daemon || true
 COPY src/ src/
 
 # Build the application
-RUN ./gradlew bootJar --no-daemon -x test
+RUN ./gradlew bootJar --no-daemon -x test;
 
 # Runtime stage
 FROM eclipse-temurin:25-jre AS runner
@@ -30,7 +30,7 @@ WORKDIR /app
 COPY --from=builder /app/build/libs/*.jar app.jar
 
 # Run as non-root user
-RUN useradd -r -u 1001 appuser && chown -R appuser:appuser /app
+RUN useradd -r -u 1001 appuser && chown -R appuser:appuser /app;
 USER appuser
 
 EXPOSE 8080

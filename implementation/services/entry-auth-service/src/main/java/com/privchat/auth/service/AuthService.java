@@ -1,7 +1,6 @@
 package com.privchat.auth.service;
 
 import com.privchat.auth.model.SecurityAuditLog;
-import com.privchat.auth.repository.SecurityAuditLogRepository;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -9,14 +8,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthService {
 
-    private final SecurityAuditLogRepository auditLogRepository;
+    private final AuditLogService auditLogService;
     private final RateLimitService rateLimitService;
     private final String networkPassword;
 
-    public AuthService(SecurityAuditLogRepository auditLogRepository,
+    public AuthService(AuditLogService auditLogService,
                        RateLimitService rateLimitService,
                        @Value("${NETWORK_PASSWORD}") String networkPassword) {
-        this.auditLogRepository = auditLogRepository;
+        this.auditLogService = auditLogService;
         this.rateLimitService = rateLimitService;
         this.networkPassword = networkPassword;
     }
@@ -43,20 +42,20 @@ public class AuthService {
 
         // 2. Check rate limit
         if (!rateLimitService.tryConsume(ipAddress)) {
-            auditLogRepository.save(new SecurityAuditLog("RATE_LIMITED", ipAddress, trimmedUsername));
+            auditLogService.log(new SecurityAuditLog("RATE_LIMITED", ipAddress, trimmedUsername));
             throw new RateLimitedException("Too many attempts. Please try again later.", 600L);
         }
 
         // 3. Verify password
         if (!networkPassword.equals(password)) {
-            auditLogRepository.save(new SecurityAuditLog("JOIN_FAILURE", ipAddress, trimmedUsername));
+            auditLogService.log(new SecurityAuditLog("JOIN_FAILURE", ipAddress, trimmedUsername));
             throw new InvalidPasswordException("Invalid network password");
         }
 
         // 4. Create session
         session.setAttribute("username", trimmedUsername);
         session.setAttribute("authenticated", true);
-        auditLogRepository.save(new SecurityAuditLog("JOIN_SUCCESS", ipAddress, trimmedUsername));
+        auditLogService.log(new SecurityAuditLog("JOIN_SUCCESS", ipAddress, trimmedUsername));
     }
 
     /**

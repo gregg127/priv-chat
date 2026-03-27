@@ -1,27 +1,24 @@
 package com.privchat.auth.service;
 
 import com.privchat.auth.model.SecurityAuditLog;
-import com.privchat.auth.repository.SecurityAuditLogRepository;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
     @Mock
-    private SecurityAuditLogRepository auditLogRepository;
+    private AuditLogService auditLogService;
 
     @Mock
     private RateLimitService rateLimitService;
@@ -37,7 +34,7 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(auditLogRepository, rateLimitService, CORRECT_PASSWORD);
+        authService = new AuthService(auditLogService, rateLimitService, CORRECT_PASSWORD);
     }
 
     // ─── US1: join() tests ────────────────────────────────────────────────────
@@ -45,7 +42,6 @@ class AuthServiceTest {
     @Test
     void join_withCorrectPassword_setsSessionAttributesAndLogsSuccess() {
         when(rateLimitService.tryConsume(IP)).thenReturn(true);
-        when(auditLogRepository.save(any())).thenReturn(null);
 
         authService.join(USERNAME, CORRECT_PASSWORD, IP, session);
 
@@ -53,10 +49,10 @@ class AuthServiceTest {
         verify(session).setAttribute("authenticated", true);
 
         ArgumentCaptor<SecurityAuditLog> logCaptor = ArgumentCaptor.forClass(SecurityAuditLog.class);
-        verify(auditLogRepository).save(logCaptor.capture());
-        assertThat(logCaptor.getValue().getEventType()).isEqualTo("JOIN_SUCCESS");
-        assertThat(logCaptor.getValue().getUsername()).isEqualTo(USERNAME);
-        assertThat(logCaptor.getValue().getIpAddress()).isEqualTo(IP);
+        verify(auditLogService).log(logCaptor.capture());
+        assertThat(logCaptor.getValue().eventType()).isEqualTo("JOIN_SUCCESS");
+        assertThat(logCaptor.getValue().username()).isEqualTo(USERNAME);
+        assertThat(logCaptor.getValue().ipAddress()).isEqualTo(IP);
     }
 
     @Test
@@ -67,8 +63,8 @@ class AuthServiceTest {
             .isInstanceOf(AuthService.InvalidPasswordException.class);
 
         ArgumentCaptor<SecurityAuditLog> logCaptor = ArgumentCaptor.forClass(SecurityAuditLog.class);
-        verify(auditLogRepository).save(logCaptor.capture());
-        assertThat(logCaptor.getValue().getEventType()).isEqualTo("JOIN_FAILURE");
+        verify(auditLogService).log(logCaptor.capture());
+        assertThat(logCaptor.getValue().eventType()).isEqualTo("JOIN_FAILURE");
     }
 
     @Test
@@ -79,8 +75,8 @@ class AuthServiceTest {
             .isInstanceOf(AuthService.RateLimitedException.class);
 
         ArgumentCaptor<SecurityAuditLog> logCaptor = ArgumentCaptor.forClass(SecurityAuditLog.class);
-        verify(auditLogRepository).save(logCaptor.capture());
-        assertThat(logCaptor.getValue().getEventType()).isEqualTo("RATE_LIMITED");
+        verify(auditLogService).log(logCaptor.capture());
+        assertThat(logCaptor.getValue().eventType()).isEqualTo("RATE_LIMITED");
     }
 
     @Test
@@ -88,7 +84,7 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.join("  ", CORRECT_PASSWORD, IP, session))
             .isInstanceOf(AuthService.ValidationException.class);
         verifyNoInteractions(rateLimitService);
-        verifyNoInteractions(auditLogRepository);
+        verifyNoInteractions(auditLogService);
     }
 
     @Test

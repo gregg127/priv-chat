@@ -16,12 +16,12 @@ project constitution.
 
 **Language/Version**: Java 25 LTS (backend), TypeScript / React 19 (frontend)
 **Primary Dependencies**: Spring Boot 4.0.4, Spring Cloud Gateway 5.0.x (Oakwood),
-  Spring Session JDBC, Bucket4j 8.x (rate limiting), Next.js 15 + React 19 (frontend),
+  Spring Session JDBC, Bucket4j 8.x (rate limiting), jOOQ 3.20.x (data access),
+  nu.studer.jooq 9.0 (Gradle codegen plugin), Next.js 15 + React 19 (frontend),
   Node.js 22 (Next.js runtime in Docker)
 **Storage**: PostgreSQL 17 — session store + security audit log
 **Testing**: JUnit 5 + Mockito + Spring Boot Test (backend);
   Jest + React Testing Library (Next.js) (frontend)
-**Target Platform**: Linux Docker containers; docker-compose for local dev
   and single-node deployment
 **Project Type**: Microservices web application (entry-auth-service + API gateway +
   React frontend; additional services in future features)
@@ -52,7 +52,7 @@ project constitution.
 | Man-in-the-middle | TLS 1.2+ required at API gateway | Certificate management is operator responsibility |
 | Network password in source code | Password injected as environment variable at runtime; never committed | Operator must manage env vars securely |
 | Replay of session cookie | Server-side session with expiry; cookie not reusable after server-side invalidation | None — fully mitigated |
-| SQL injection | Spring Data JPA / parameterised queries only; no raw SQL string concat | None |
+| SQL injection | jOOQ parameterised queries only; no raw SQL string concat | None |
 | Username as attack vector | Username is a display-name only; not used in queries without parameterisation | None |
 | Rate-limit bypass via IP spoofing | X-Forwarded-For header parsed behind trusted gateway only | Sophisticated attacker with many IPs remains residual risk |
 
@@ -89,8 +89,8 @@ implementation/
 │       ├── src/
 │       │   ├── main/java/com/privchat/auth/
 │       │   │   ├── controller/     # AuthController (join, logout, check)
-│       │   │   ├── service/        # AuthService, RateLimitService
-│       │   │   ├── model/          # AuditLog entity
+│       │   │   ├── service/        # AuthService, RateLimitService, AuditLogService
+│       │   │   ├── model/          # SecurityAuditLog (plain record; no JPA)
 │       │   │   └── config/         # SecurityConfig, SessionConfig
 │       │   └── test/java/com/privchat/auth/
 │       │       ├── controller/
