@@ -3,11 +3,13 @@ package com.privchat.auth.integration;
 import com.privchat.auth.controller.dto.JoinRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.client.NoOpResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -41,6 +43,9 @@ class SessionPersistenceIntegrationTest {
 
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     private RestTemplate restTemplate;
 
@@ -109,5 +114,36 @@ class SessionPersistenceIntegrationTest {
     void withNoSessionCookie_deleteSession_returns401() {
         ResponseEntity<Map> response = restTemplate.exchange(url("/auth/session"), HttpMethod.DELETE, HttpEntity.EMPTY, Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void afterLogout_sessionRowRemovedFromDB() {
+        String sessionCookie = joinAndGetSessionCookie("dave", "session-test-password");
+
+        Integer before = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM spring_session", Integer.class);
+        assertThat(before).isGreaterThanOrEqualTo(1);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Cookie", sessionCookie);
+        restTemplate.exchange(url("/auth/session"), HttpMethod.DELETE, new HttpEntity<>(headers), Map.class);
+
+        Integer after = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM spring_session", Integer.class);
+        assertThat(after).isEqualTo(before - 1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void withExpiredSession_getSession_returns401() {
+        String sessionCookie = joinAndGetSessionCookie("eve", "session-test-password");
+
+        jdbcTemplate.update("DELETE FROM spring_session");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Cookie", sessionCookie);
+        ResponseEntity<Map> response = restTemplate.exchange(url("/auth/session"), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).containsEntry("authenticated", false);
     }
 }

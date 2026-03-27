@@ -104,9 +104,11 @@ inside the portal without seeing the entry gate again.
   to the portal.
 - **FR-002**: The system MUST validate that the entered network password matches
   the configured shared network password before admitting a user.
-- **FR-003**: The system MUST reject entry and display an error message when
-  the wrong password is submitted; it MUST NOT reveal whether the username or
-  the password was incorrect.
+- **FR-003**: The system MUST reject entry and display the message "Incorrect network
+  password" when the wrong password is submitted. The error message MUST NOT provide
+  any hints about the correct password value (e.g., no "close", "almost", or partial
+  match feedback). Username values are not validated against any account store and
+  MUST NOT be referenced in error messages.
 - **FR-004**: The system MUST require a non-empty, non-whitespace-only username
   before allowing form submission.
 - **FR-005**: The system MUST associate the chosen username with the user's
@@ -134,9 +136,10 @@ inside the portal without seeing the entry gate again.
   password field MUST remain empty.
 - **FR-012**: The system MUST log the following security events server-side
   with IP address and timestamp (no message content or passwords logged):
-  - Failed join attempt (wrong password)
-  - Successful join (includes chosen username)
-  - Rate-limit trigger (IP threshold exceeded)
+  - Failed join attempt (wrong password) — `username` field MUST be null (do not log
+    the attempted display name)
+  - Successful join — includes chosen username, IP, and timestamp
+  - Rate-limit trigger (IP threshold exceeded) — `username` field MUST be null
 
 ### Key Entities
 

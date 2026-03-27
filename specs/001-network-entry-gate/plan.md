@@ -5,10 +5,10 @@
 
 ## Summary
 
-Build the portal entry gate: a React landing page where users choose a display
-name and enter a shared network password to gain access. The backend is an
-`entry-auth-service` (Spring Boot / Java 25) behind a Spring Cloud Gateway. Sessions
-are stored server-side in PostgreSQL. IP-based rate limiting (5 failures / 10 min)
+Build the portal entry gate: a Next.js 15 + React 19 landing page where users choose
+a display name and enter a shared network password to gain access. The backend is an
+`entry-auth-service` (Spring Boot / Java 25) behind a custom RestClient-based API
+gateway (no Spring Cloud dependency). Sessions are stored server-side in PostgreSQL. IP-based rate limiting (5 failures / 10 min)
 and structured security-event logging are first-class requirements per the
 project constitution.
 
