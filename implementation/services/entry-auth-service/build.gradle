@@ -46,6 +46,7 @@ dependencies {
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.3")
     runtimeOnly("org.postgresql:postgresql:42.7.10")
     testImplementation("org.springframework.boot:spring-boot-starter-test:4.0.4")
+    testImplementation("org.apache.httpcomponents.client5:httpclient5:5.5.2")
     testImplementation("org.springframework.security:spring-security-test:7.0.4")
     testImplementation("org.testcontainers:junit-jupiter:1.21.4")
     testImplementation("org.testcontainers:postgresql:1.21.4")
