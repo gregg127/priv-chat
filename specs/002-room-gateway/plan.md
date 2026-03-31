@@ -16,9 +16,8 @@ startup and validates JWTs locally — no per-request HTTP calls to
 `entry-auth-service`. The API gateway gains a `RoomsProxyController` that forwards
 `/rooms/**` traffic including the JWT `Authorization` header to `rooms-service`.
 
-**Scope note**: The user explicitly requested full CRUD (create, read, update, delete).
-The original spec marked room deletion and renaming as out of scope for v1. This plan
-expands scope to include them per the explicit planning instruction.
+**Scope**: Full CRUD — create, read, update (rename), delete. Rename and delete are
+creator-only actions (US4, P4). Spec updated with FR-013, FR-014, FR-015 and US4.
 
 ## Technical Context
 
@@ -207,10 +206,8 @@ no direct HTTP inter-service calls are required for auth. The API gateway gains 
 proxy pattern as `AuthProxyController`). The existing Next.js frontend is updated to
 call the gateway's `/rooms` endpoints.
 
-**Scope note**: The user explicitly requested full CRUD (create, read, update, delete).
-The original spec marked room deletion and renaming as out of scope for v1. This plan
-expands scope to include them per the explicit planning instruction. The spec has been
-updated accordingly via this plan.
+**Scope**: Full CRUD — create, read, update (rename), delete. Rename and delete are
+creator-only actions (US4, P4). Spec updated with FR-013, FR-014, FR-015 and US4.
 
 ## Technical Context
 

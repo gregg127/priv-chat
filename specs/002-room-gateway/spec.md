@@ -110,6 +110,50 @@ visible and functional.
 
 ---
 
+### User Story 4 - Room Management: Rename and Delete (Priority: P4)
+
+A logged-in user who created a room wants to manage it. From the Room Gateway,
+the creator of a room can rename it or permanently delete it. These actions are
+only available to the room's creator — other users cannot modify or remove
+rooms they did not create.
+
+**Why this priority**: Gives creators ownership and control over their rooms.
+Lower priority than browsing and creation; the gateway is fully usable without
+it. Deletion also frees a slot toward the 10-room cap, enabling the creator to
+create new rooms.
+
+**Independent Test**: As the creator of a room, click "Rename" on a room card,
+enter a new name, confirm, and verify the room list reflects the new name.
+Then click "Delete" on a room, confirm the dialog, and verify the room
+disappears from the list and the creator's active room count decreases by one.
+Attempt the same actions as a non-creator and verify they are not available /
+return an error.
+
+**Acceptance Scenarios**:
+
+1. **Given** a logged-in user is the creator of a room, **When** they click
+   "Rename" on that room's card and submit a new valid name, **Then** the room
+   is renamed and the new name appears in the room list immediately.
+
+2. **Given** a new name is already taken by another room, **When** the creator
+   submits the rename, **Then** an error is shown ("Room name already taken")
+   and the room retains its original name.
+
+3. **Given** a logged-in user is the creator of a room, **When** they click
+   "Delete" and confirm, **Then** the room is permanently removed from the
+   list and the creator's active room slot is freed (enabling a new room to be
+   created if they were at the 10-room cap).
+
+4. **Given** a logged-in user is NOT the creator of a room, **When** they
+   attempt to rename or delete via the API, **Then** a 403 Forbidden response
+   is returned and an `UNAUTHORIZED_ATTEMPT` event is written to the audit log.
+
+5. **Given** rename and delete controls are rendered, **Then** they are only
+   visible / enabled on rooms where `creatorUsername` matches the current user's
+   JWT `sub` claim.
+
+---
+
 ### Edge Cases
 
 - What happens when the room list is very long (e.g., hundreds of rooms)?
@@ -123,8 +167,8 @@ visible and functional.
   → The sequential counter continues incrementing until a unique name is found.
 - What happens when a user has already created 10 rooms and clicks "Create Room"?
   → The "Create Room" button is disabled; a message informs the user they have
-  reached the 10-room limit. The button re-enables only if room deletion is
-  introduced in a future feature.
+  reached the 10-room limit. The button re-enables if the user deletes a room,
+  freeing an active room slot (FR-014).
 
 ## Requirements *(mandatory)*
 
@@ -156,6 +200,19 @@ visible and functional.
   exception to the zero-knowledge server principle; all authenticated portal
   members can read this metadata. The planning threat model MUST record this
   decision and assess residual risk.
+- **FR-013**: The creator of a room MUST be able to rename it by submitting a
+  new name. The new name MUST be globally unique (max 100 characters). A 409
+  error MUST be returned if the name is already taken. Only the creator
+  (identified by JWT `sub` claim) may rename a room; any other user MUST
+  receive 403.
+- **FR-014**: The creator of a room MUST be able to permanently delete it.
+  Deleting a room MUST decrement the creator's `active_rooms_count` by one,
+  freeing a creation slot. Only the creator may delete; any other user MUST
+  receive 403. All mutation failures by non-creators MUST write an
+  `UNAUTHORIZED_ATTEMPT` entry to `room_audit_log`.
+- **FR-015**: Rename and delete controls in the UI MUST only be visible and
+  enabled on room cards where the `creatorUsername` matches the authenticated
+  user's username.
 
 ### Key Entities
 
@@ -195,7 +252,7 @@ visible and functional.
 - Rooms are permanent once created; they are never automatically removed and
   always remain visible in the Room Gateway list regardless of how many users
   are currently inside.
-- Room deletion and renaming are out of scope for this feature.
+- Room deletion and renaming are in scope — creator-only actions (FR-013, FR-014, FR-015).
 - Each user may create a maximum of 10 rooms total. The "Create Room" button is
   disabled once this limit is reached.
 - Users with a valid session are already identified by their chosen username

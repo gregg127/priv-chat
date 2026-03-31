@@ -87,13 +87,23 @@
 
 ---
 
+## Phase 6: User Story 4 — Room Management (Rename and Delete)
+
+**Story goal**: Creator can rename or delete their own rooms. Non-creators cannot. Deletion frees a cap slot.
+**Independent test**: As creator — rename a room, verify new name in list. Delete a room, verify it disappears and cap slot is freed. As non-creator — attempt both actions via API and verify 403 + audit log.
+
+- [ ] T038 [P] [US4] Add `PUT /rooms/{id}` to `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java` + `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java`: accepts `UpdateRoomRequest`; verifies JWT `sub` matches `creator_username` (→ 403 + `UNAUTHORIZED_ATTEMPT` audit log entry via `AuditLogRepository` if not); validates name non-empty and ≤ 100 chars (→ 400); checks global name uniqueness (→ 409); updates `rooms.name`; writes `UPDATE_ROOM` audit log; returns updated `RoomResponse`
+- [ ] T039 [P] [US4] Add `DELETE /rooms/{id}` to `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java` + `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java`: verifies creator (→ 403 + `UNAUTHORIZED_ATTEMPT` audit log if not); in a single transaction: deletes room, decrements `user_room_stats.active_rooms_count`, writes `DELETE_ROOM` audit log entry with `room_name` snapshot; returns 204
+- [ ] T040 [US4] Add inline rename UI to `implementation/frontend/src/components/RoomCard/index.tsx`: show "Rename" button only when `room.creatorUsername === currentUser`; clicking opens an inline text input pre-filled with current name; on submit calls `updateRoom(room.id, newName)` from `roomsApi.ts`; on 200 refreshes room in list; on 409 shows "Name already taken" error inline
+- [ ] T041 [US4] Add delete UI to `implementation/frontend/src/components/RoomCard/index.tsx`: show "Delete" button only when `room.creatorUsername === currentUser`; clicking shows a confirmation prompt ("Delete this room?"); on confirm calls `deleteRoom(room.id)` from `roomsApi.ts`; on 204 removes room from list in state; if user was at cap, re-enables "Create Room" button
+
+---
+
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T038 [P] Add `PUT /rooms/{id}` to `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java` + `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java`: accepts `UpdateRoomRequest`; verifies JWT `sub` matches `creator_username` (→ 403 + `UNAUTHORIZED_ATTEMPT` audit log if not); updates `rooms.name`; writes `UPDATE_ROOM` audit log; returns updated `RoomResponse`
-- [ ] T039 [P] Add `DELETE /rooms/{id}` to `RoomController` + `RoomService`: verifies creator (→ 403 + audit log if not); deletes room; decrements `user_room_stats.active_rooms_count` in same transaction; writes `DELETE_ROOM` audit log entry (with room name snapshot); returns 204
-- [ ] T040 Implement `UNAUTHORIZED_ATTEMPT` audit log writes in `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java` for all 403 code paths (PUT and DELETE non-creator attempts) using `AuditLogRepository`
-- [ ] T041 Add JWT refresh logic to `implementation/frontend/src/lib/authContext.tsx` (or a dedicated hook): check remaining JWT lifetime on each rooms API call; if < 60 seconds, call `GET /auth/refresh-token` (using session cookie) and update `token` in context before retrying the rooms API call
-- [ ] T042 Add real-time room list updates to `implementation/frontend/src/app/portal/rooms/page.tsx`: poll `GET /rooms` every 2 seconds (or implement SSE if supported) so newly created/deleted rooms appear within 2 seconds (FR-003, SC-003) without a full page refresh; cancel polling on component unmount
+- [ ] T042 Implement `UNAUTHORIZED_ATTEMPT` audit log writes in `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java` for all 403 code paths (PUT and DELETE non-creator attempts) using `AuditLogRepository`
+- [ ] T043 Add JWT refresh logic to `implementation/frontend/src/lib/authContext.tsx` (or a dedicated hook): check remaining JWT lifetime on each rooms API call; if < 60 seconds, call `GET /auth/refresh-token` (using session cookie) and update `token` in context before retrying the rooms API call
+- [ ] T044 Add real-time room list updates to `implementation/frontend/src/app/portal/rooms/page.tsx`: poll `GET /rooms` every 2 seconds (or implement SSE if supported) so newly created/deleted rooms appear within 2 seconds (FR-003, SC-003) without a full page refresh; cancel polling on component unmount
 
 ---
 
@@ -135,9 +145,12 @@ T035 depends on T034
 T036 no backend dep (pure UI)
 T037 depends on T036, T034
 
-T038, T039 depend on T033
-T040 depends on T031
-T041 depends on T025
+T038, T039 depend on T033 (need RoomService + AuditLogRepository)
+T040 depends on T038 (needs PUT endpoint live), T028 (needs RoomCard)
+T041 depends on T039 (needs DELETE endpoint live), T028 (needs RoomCard)
+T042 depends on T031 (needs AuditLogRepository)
+T043 depends on T025 (needs AuthContext)
+T044 depends on T029 (needs rooms page)T041 depends on T025
 T042 depends on T029
 ```
 
@@ -147,7 +160,7 @@ T042 depends on T029
 
 **Within US1**: T022, T023, T025, T028 can all run in parallel once T008+T009 are done.
 
-**Within US2**: T030, T031 run in parallel before T032; T038+T039 run in parallel in the polish phase.
+**Within US4**: T038 + T039 run in parallel (different endpoints); T040 + T041 run in parallel (different UI interactions in same component).
 
 **Frontend work** (T025 onward) can start early — React context and API client have no backend runtime dependency (only type shape).
 
@@ -159,10 +172,12 @@ T042 depends on T029
 
 **Increment 3 = Phase 5 (US3)**: Empty state polish. Delivers FR-008.
 
-**Increment 4 = Final Phase**: Full CRUD, JWT refresh, real-time updates.
+**Increment 4 = Phase 6 (US4)**: Rename + delete with creator-only enforcement. Delivers FR-013/FR-014/FR-015. Frees cap slots on delete.
+
+**Increment 5 = Final Phase**: JWT refresh, real-time updates.
 
 ---
 
-**Total tasks**: 42
-**Tasks per phase**: Setup 4 | Foundational 17 | US1 8 | US2 6 | US3 2 | Polish 5
-**Parallel opportunities**: 18 tasks marked [P]
+**Total tasks**: 44
+**Tasks per phase**: Setup 4 | Foundational 17 | US1 8 | US2 6 | US3 2 | US4 4 | Polish 3
+**Parallel opportunities**: 20 tasks marked [P]
