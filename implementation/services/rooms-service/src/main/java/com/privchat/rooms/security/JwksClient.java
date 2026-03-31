@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -31,6 +32,7 @@ public class JwksClient {
     private final RestClient restClient;
     private volatile RSAPublicKey cachedPublicKey;
 
+    @Autowired
     public JwksClient(@Value("${entry-auth-service.url:http://entry-auth-service:8080}") String entryAuthUrl) {
         this.restClient = RestClient.builder()
                 .baseUrl(entryAuthUrl)

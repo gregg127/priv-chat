@@ -3,6 +3,7 @@ package com.privchat.auth.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.privchat.auth.controller.dto.JoinRequest;
 import com.privchat.auth.service.AuthService;
+import com.privchat.auth.service.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,13 +24,16 @@ class AuthControllerTest {
     @Mock
     private AuthService authService;
 
+    @Mock
+    private JwtService jwtService;
+
     private MockMvc mockMvc;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new AuthController(authService))
+                .standaloneSetup(new AuthController(authService, jwtService))
                 .build();
     }
 
@@ -37,19 +41,21 @@ class AuthControllerTest {
 
     @Test
     void join_withValidCredentials_returns200WithUsername() throws Exception {
-        doNothing().when(authService).join(eq("alice"), eq("correct"), anyString(), any());
+        when(authService.join(eq("alice"), eq("correct"), anyString(), any()))
+            .thenReturn(new AuthService.JoinResult("alice", "mock-token"));
 
         mockMvc.perform(post("/auth/join")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(new JoinRequest("alice", "correct"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.username").value("alice"));
+            .andExpect(jsonPath("$.username").value("alice"))
+            .andExpect(jsonPath("$.token").value("mock-token"));
     }
 
     @Test
     void join_withWrongPassword_returns401() throws Exception {
-        doThrow(new AuthService.InvalidPasswordException("Invalid password"))
-            .when(authService).join(anyString(), eq("wrong"), anyString(), any());
+        when(authService.join(anyString(), eq("wrong"), anyString(), any()))
+            .thenThrow(new AuthService.InvalidPasswordException("Invalid password"));
 
         mockMvc.perform(post("/auth/join")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -60,8 +66,8 @@ class AuthControllerTest {
 
     @Test
     void join_whenRateLimited_returns429WithRetryAfterHeader() throws Exception {
-        doThrow(new AuthService.RateLimitedException("Too many attempts", 600L))
-            .when(authService).join(anyString(), anyString(), anyString(), any());
+        when(authService.join(anyString(), anyString(), anyString(), any()))
+            .thenThrow(new AuthService.RateLimitedException("Too many attempts", 600L));
 
         mockMvc.perform(post("/auth/join")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -89,8 +95,8 @@ class AuthControllerTest {
 
     @Test
     void join_whenValidationException_returns400() throws Exception {
-        doThrow(new AuthService.ValidationException("Username too long"))
-            .when(authService).join(anyString(), anyString(), anyString(), any());
+        when(authService.join(anyString(), anyString(), anyString(), any()))
+            .thenThrow(new AuthService.ValidationException("Username too long"));
 
         mockMvc.perform(post("/auth/join")
                 .contentType(MediaType.APPLICATION_JSON)
