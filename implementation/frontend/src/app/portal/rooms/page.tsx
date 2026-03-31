@@ -15,19 +15,19 @@ import EmptyState from '@/components/EmptyState';
  */
 export default function RoomsPage() {
   const router = useRouter();
-  const { token, setToken, username } = useAuth();
+  const { token, setToken, username, isRestoring } = useAuth();
   const [rooms, setRooms] = useState<RoomResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [capReached, setCapReached] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Redirect if unauthenticated
+  // Redirect only after session-restore attempt is complete
   useEffect(() => {
-    if (!token) {
+    if (!isRestoring && !token) {
       router.replace('/');
     }
-  }, [token, router]);
+  }, [token, isRestoring, router]);
 
   /**
    * Gets a fresh token if needed (< 60s remaining) and retries on 401.
@@ -149,9 +149,9 @@ export default function RoomsPage() {
     }
   }
 
-  if (!token) return null; // Redirect in progress
+  if (!token) return null; // Redirect in progress (isRestoring or logged out)
 
-  if (loading) {
+  if (isRestoring || loading) {
     return <main><p>Loading rooms…</p></main>;
   }
 
