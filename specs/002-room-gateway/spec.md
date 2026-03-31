@@ -5,6 +5,15 @@
 **Status**: Draft
 **Input**: User description: "room gateway - main screen that logged in users sees. On this screen user sees a list of public rooms (each one has a join button) and a button to create a room with some default values (like room name created from username and number of setup room)"
 
+## Clarifications
+
+### Session 2026-03-31
+
+- Q: Are rooms permanent or ephemeral once created? → A: Rooms are permanent — they remain in the list forever regardless of occupancy.
+- Q: Is room metadata (names, creator username) considered sensitive/encrypted? → A: Room metadata is plaintext — visible to all authenticated members, stored as-is on the server. This is an explicit, documented exception to the zero-knowledge server principle; the planning threat model must record this decision.
+- Q: What details does each room card display in the list? → A: Name, creator username, creation timestamp, and current occupant count.
+- Q: Is room creation rate-limited or capped? → A: Hard cap — maximum 10 rooms per user total.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Browsing and Joining Public Rooms (Priority: P1)
@@ -112,6 +121,10 @@ visible and functional.
   indicator is shown, and the list refreshes automatically on reconnect.
 - What happens if the default room name would conflict with an existing room name?
   → The sequential counter continues incrementing until a unique name is found.
+- What happens when a user has already created 10 rooms and clicks "Create Room"?
+  → The "Create Room" button is disabled; a message informs the user they have
+  reached the 10-room limit. The button re-enables only if room deletion is
+  introduced in a future feature.
 
 ## Requirements *(mandatory)*
 
@@ -120,7 +133,8 @@ visible and functional.
 - **FR-001**: The Room Gateway MUST be the screen presented to a user
   immediately after a successful login via the network entry gate.
 - **FR-002**: The Room Gateway MUST display a list of all currently available
-  public rooms, each showing at minimum the room name and a "Join" button.
+  public rooms. Each room card MUST show: room name, creator username, creation
+  timestamp, current occupant count, and a "Join" button.
 - **FR-003**: The room list MUST update in real time when rooms are created or
   removed by other users, without requiring a page refresh.
 - **FR-004**: Clicking the "Join" button on a room MUST navigate the user into
@@ -136,13 +150,20 @@ visible and functional.
   message and keep the "Create Room" button prominently visible.
 - **FR-009**: Access to the Room Gateway MUST be restricted to users with a
   valid session; unauthenticated requests MUST be redirected to the entry gate.
-- **FR-010**: The room list MUST be scrollable to accommodate any number of rooms.
+- **FR-012**: A user MUST NOT be able to create more than 10 rooms in total.
+  Once the limit is reached, the "Create Room" button MUST be disabled and a
+  message MUST inform the user they have reached their room creation limit. This is an explicit, documented
+  exception to the zero-knowledge server principle; all authenticated portal
+  members can read this metadata. The planning threat model MUST record this
+  decision and assess residual risk.
 
 ### Key Entities
 
 - **Room**: A named conversation space. Attributes: unique identifier, display
-  name, creator username, creation timestamp, public/private status (all rooms
-  are public in v1).
+  name, creator username, creation timestamp, current occupant count,
+  public/private status (all rooms are public in v1). Rooms are permanent —
+  they persist indefinitely and are never automatically removed regardless of
+  occupancy.
 - **Session**: Carries the logged-in user's identity (username) as established
   by the network entry gate (feature 001).
 
@@ -171,7 +192,11 @@ visible and functional.
   where `n` starts at 1 and increments per user (not globally).
 - The room list is a flat, unordered (or reverse-chronological) list; search,
   filtering, and sorting are out of scope for v1.
+- Rooms are permanent once created; they are never automatically removed and
+  always remain visible in the Room Gateway list regardless of how many users
+  are currently inside.
 - Room deletion and renaming are out of scope for this feature.
-- The maximum number of concurrent rooms is not bounded in v1.
+- Each user may create a maximum of 10 rooms total. The "Create Room" button is
+  disabled once this limit is reached.
 - Users with a valid session are already identified by their chosen username
   from the entry gate; no additional profile data is required.
