@@ -7,11 +7,13 @@ import { fetchRooms, createRoom, updateRoom, deleteRoom, refreshToken, RoomRespo
 import RoomCard from '@/components/RoomCard';
 import EmptyState from '@/components/EmptyState';
 
+const POLL_INTERVAL_MS = 10_000; // 10 s — enough freshness without hammering the server
+
 /**
  * Room Gateway page.
  * Shows all public rooms. Supports Create Room, Join, Rename, Delete.
  * Requires a valid JWT in auth context — redirects to / if missing.
- * Polls for new rooms every 2 seconds (FR-003, SC-003).
+ * Polls for new rooms every 10 seconds (FR-003).
  */
 export default function RoomsPage() {
   const router = useRouter();
@@ -20,7 +22,19 @@ export default function RoomsPage() {
   const [loading, setLoading] = useState(true);
   const [capReached, setCapReached] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Refs so polling callback always uses the latest values without
+  // recreating the interval on every render/token change.
+  const tokenRef = useRef(token);
+  const usernameRef = useRef(username);
+  const setTokenRef = useRef(setToken);
+  const routerRef = useRef(router);
+  const isFetching = useRef(false); // prevents concurrent in-flight fetches
+
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => { usernameRef.current = username; }, [username]);
+  useEffect(() => { setTokenRef.current = setToken; }, [setToken]);
+  useEffect(() => { routerRef.current = router; }, [router]);
 
   // Redirect only after session-restore attempt is complete
   useEffect(() => {
@@ -29,63 +43,63 @@ export default function RoomsPage() {
     }
   }, [token, isRestoring, router]);
 
-  /**
-   * Gets a fresh token if needed (< 60s remaining) and retries on 401.
-   */
-  const getValidToken = useCallback(async (): Promise<string | null> => {
-    if (!token) return null;
-
+  /** Returns a valid (non-expired) token, refreshing silently if < 60 s remain. */
+  async function getValidToken(): Promise<string | null> {
+    const t = tokenRef.current;
+    if (!t) return null;
     try {
-      // Decode payload to check expiry
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      const payload = JSON.parse(atob(t.split('.')[1]));
       const expiresIn = payload.exp * 1000 - Date.now();
       if (expiresIn < 60_000) {
         const newToken = await refreshToken();
-        setToken(newToken);
+        setTokenRef.current(newToken);
+        tokenRef.current = newToken;
         return newToken;
       }
     } catch {
-      // Token malformed or refresh failed — use existing
+      // malformed or refresh failed — use existing token
     }
-    return token;
-  }, [token, setToken]);
+    return t;
+  }
 
+  /** Fetches the room list once. Guards against concurrent calls. */
   const loadRooms = useCallback(async () => {
-    const validToken = await getValidToken();
-    if (!validToken) return;
-
+    if (isFetching.current) return;
+    isFetching.current = true;
     try {
+      const validToken = await getValidToken();
+      if (!validToken) return;
+
       const data = await fetchRooms(validToken);
       setRooms(data);
-      // Infer cap: count rooms where current user is creator
-      if (username) {
-        const myRooms = data.filter(r => r.creatorUsername === username);
-        setCapReached(myRooms.length >= 10);
+      const u = usernameRef.current;
+      if (u) {
+        setCapReached(data.filter(r => r.creatorUsername === u).length >= 10);
       }
     } catch (err) {
       if (err instanceof RoomsApiError && err.status === 401) {
-        router.replace('/');
+        routerRef.current.replace('/');
       }
-      // Ignore other errors during polling
+      // Silently ignore transient errors during polling
+    } finally {
+      isFetching.current = false;
     }
-  }, [getValidToken, username, router]);
+  }, []); // stable — reads all mutable state via refs
 
-  // Initial load
+  // Initial load: run once when token first becomes available
+  const didInitialLoad = useRef(false);
   useEffect(() => {
-    if (!token) return;
+    if (!token || didInitialLoad.current) return;
+    didInitialLoad.current = true;
     loadRooms().finally(() => setLoading(false));
   }, [token, loadRooms]);
 
-  // Poll every 2 seconds (FR-003, SC-003)
+  // Polling: stable interval — never restarts due to token/callback churn
   useEffect(() => {
     if (!token) return;
-    pollingRef.current = setInterval(() => {
-      loadRooms();
-    }, 2000);
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
-  }, [token, loadRooms]);
+    const id = setInterval(loadRooms, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [token, loadRooms]); // token → only restarts if user logs out/in
 
   async function handleCreateRoom() {
     const validToken = await getValidToken();
