@@ -16,10 +16,10 @@
 
 **Purpose**: Create the new microservice skeleton. Must complete before any domain work.
 
-- [ ] T001 Create `implementation/services/rooms-service/build.gradle` with Spring Boot 4.0.4, Spring Web, Spring Security, jOOQ 3.20.4, Flyway 11.20.3, JJWT 0.12.6, Testcontainers, PostgreSQL driver — mirror `entry-auth-service/build.gradle` dependency versions exactly
-- [ ] T002 [P] Create `implementation/services/rooms-service/Dockerfile` — mirror `entry-auth-service/Dockerfile` exactly (Java 25, multi-stage Gradle build)
-- [ ] T003 [P] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/RoomsServiceApplication.java` (Spring Boot main class) and `src/main/resources/application.yml` with datasource (`SPRING_DATASOURCE_*`), Flyway, jOOQ dialect, server port 8080, `ENTRY_AUTH_SERVICE_URL` env var, `JWT_EXPIRY_SECONDS` default 900
-- [ ] T004 Update `implementation/docker-compose.yml`: add `postgres-rooms` service (PostgreSQL 17, separate volume `postgres_rooms_data`, env vars `ROOMS_DB`/`ROOMS_DB_USER`/`ROOMS_DB_PASSWORD`, healthcheck); add `rooms-service` service (depends on `postgres-rooms` healthy + `entry-auth-service` healthy, env `ENTRY_AUTH_SERVICE_URL`, no published port, on `privchat-net`); add `ROOMS_SERVICE_URL` env var to `api-gateway` service
+- [x] T001 Create `implementation/services/rooms-service/build.gradle` with Spring Boot 4.0.4, Spring Web, Spring Security, jOOQ 3.20.4, Flyway 11.20.3, JJWT 0.12.6, Testcontainers, PostgreSQL driver — mirror `entry-auth-service/build.gradle` dependency versions exactly
+- [x] T002 [P] Create `implementation/services/rooms-service/Dockerfile` — mirror `entry-auth-service/Dockerfile` exactly (Java 25, multi-stage Gradle build)
+- [x] T003 [P] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/RoomsServiceApplication.java` (Spring Boot main class) and `src/main/resources/application.yml` with datasource (`SPRING_DATASOURCE_*`), Flyway, jOOQ dialect, server port 8080, `ENTRY_AUTH_SERVICE_URL` env var, `JWT_EXPIRY_SECONDS` default 900
+- [x] T004 Update `implementation/docker-compose.yml`: add `postgres-rooms` service (PostgreSQL 17, separate volume `postgres_rooms_data`, env vars `ROOMS_DB`/`ROOMS_DB_USER`/`ROOMS_DB_PASSWORD`, healthcheck); add `rooms-service` service (depends on `postgres-rooms` healthy + `entry-auth-service` healthy, env `ENTRY_AUTH_SERVICE_URL`, no published port, on `privchat-net`); add `ROOMS_SERVICE_URL` env var to `api-gateway` service
 
 ---
 

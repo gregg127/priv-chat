@@ -44,6 +44,46 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+  postgres-rooms:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ROOMS_DB:-rooms}
+      POSTGRES_USER: ${ROOMS_DB_USER:-rooms}
+      POSTGRES_PASSWORD: ${ROOMS_DB_PASSWORD:-changeme}
+    volumes: [postgres_rooms_data:/var/lib/postgresql/data]
+    networks: [privchat-net]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${ROOMS_DB_USER:-rooms} -d ${ROOMS_DB:-rooms}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+  rooms-service:
+    build:
+      context: ./services/rooms-service
+      dockerfile: Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-rooms:5432/${ROOMS_DB:-rooms}
+      SPRING_DATASOURCE_USERNAME: ${ROOMS_DB_USER:-rooms}
+      SPRING_DATASOURCE_PASSWORD: ${ROOMS_DB_PASSWORD:-changeme}
+      ENTRY_AUTH_SERVICE_URL: http://entry-auth-service:8080
+      JWT_EXPIRY_SECONDS: ${JWT_EXPIRY_SECONDS:-900}
+    depends_on:
+      postgres-rooms:
+        condition: service_healthy
+      entry-auth-service:
+        condition: service_healthy
+    networks: [privchat-net]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8080/actuator/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
   api-gateway:
     build:
       context: ./api-gateway
@@ -51,8 +91,11 @@ services:
     ports: [8080:8080]
     environment:
       ENTRY_AUTH_SERVICE_URL: http://entry-auth-service:8080
+      ROOMS_SERVICE_URL: http://rooms-service:8080
     depends_on:
       entry-auth-service:
+        condition: service_healthy
+      rooms-service:
         condition: service_healthy
     networks: [privchat-net]
   frontend:
@@ -67,3 +110,4 @@ services:
     networks: [privchat-net]
 volumes:
   postgres_data:
+  postgres_rooms_data:

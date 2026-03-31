@@ -1,0 +1,26 @@
+logging:
+  level:
+    root: INFO
+    org.flywaydb: DEBUG
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-rooms:5432/rooms}
+    username: ${SPRING_DATASOURCE_USERNAME:rooms}
+    password: ${SPRING_DATASOURCE_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: false
+server:
+  port: 8080
+entry-auth-service:
+  url: ${ENTRY_AUTH_SERVICE_URL:http://entry-auth-service:8080}
+jwt:
+  expiry-seconds: ${JWT_EXPIRY_SECONDS:900}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never

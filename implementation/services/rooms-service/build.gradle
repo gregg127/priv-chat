@@ -1,0 +1,103 @@
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath("org.flywaydb:flyway-database-postgresql:11.20.3")
+        classpath("org.postgresql:postgresql:42.7.10")
+    }
+}
+
+plugins {
+    id 'org.springframework.boot' version '4.0.4'
+    id 'java'
+    id 'nu.studer.jooq' version '9.0'
+    id 'org.flywaydb.flyway' version '11.20.3'
+}
+
+group = 'com.privchat'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'src/main/java', 'build/generated-sources/jooq'
+        }
+    }
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web:4.0.4")
+    implementation("org.springframework.boot:spring-boot-starter-actuator:4.0.4")
+    implementation("org.springframework.boot:spring-boot-starter-jooq:4.0.4")
+    implementation("org.springframework.boot:spring-boot-starter-security:4.0.4")
+    implementation("org.flywaydb:flyway-core:11.20.3")
+    implementation("org.flywaydb:flyway-database-postgresql:11.20.3")
+    implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+    runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+    runtimeOnly("org.postgresql:postgresql:42.7.10")
+    testImplementation("org.springframework.boot:spring-boot-starter-test:4.0.4")
+    testImplementation("org.springframework.security:spring-security-test:7.0.4")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.4")
+    testImplementation("org.testcontainers:postgresql:1.21.4")
+    jooqGenerator("org.jooq:jooq-meta-extensions:3.20.4")
+}
+
+jooq {
+    version = '3.20.4'
+    configurations {
+        main {
+            generationTool {
+                generator {
+                    database {
+                        name = 'org.jooq.meta.extensions.ddl.DDLDatabase'
+                        properties {
+                            property {
+                                key = 'scripts'
+                                value = 'src/main/resources/db/migration'
+                            }
+                            property {
+                                key = 'sort'
+                                value = 'flyway'
+                            }
+                            property {
+                                key = 'defaultNameCase'
+                                value = 'lower'
+                            }
+                        }
+                    }
+                    generate {
+                        daos = false
+                        records = true
+                        fluentSetters = true
+                    }
+                    target {
+                        packageName = 'com.privchat.rooms.jooq'
+                        directory = 'build/generated-sources/jooq'
+                    }
+                }
+            }
+        }
+    }
+}
+
+flyway {
+    url      = System.getenv('SPRING_DATASOURCE_URL')      ?: 'jdbc:postgresql://localhost:5432/rooms'
+    user     = System.getenv('SPRING_DATASOURCE_USERNAME') ?: 'rooms'
+    password = System.getenv('SPRING_DATASOURCE_PASSWORD') ?: 'changeme'
+    locations = ['filesystem:src/main/resources/db/migration']
+    baselineOnMigrate = true
+}
+
+test {
+    useJUnitPlatform()
+}
