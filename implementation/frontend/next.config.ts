@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
         source: '/auth/:path*',
         destination: `${process.env.API_GATEWAY_URL || 'http://api-gateway:8080'}/auth/:path*`,
       },
+      {
+        source: '/rooms/:path*',
+        destination: `${process.env.API_GATEWAY_URL || 'http://api-gateway:8080'}/rooms/:path*`,
+      },
     ];
   },
   async headers() {

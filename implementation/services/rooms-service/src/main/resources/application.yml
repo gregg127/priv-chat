@@ -2,6 +2,8 @@ logging:
   level:
     root: INFO
     org.flywaydb: DEBUG
+    com.privchat.rooms: DEBUG
+    org.springframework.web.servlet.DispatcherServlet: DEBUG
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres-rooms:5432/rooms}
@@ -12,6 +14,10 @@ spring:
     enabled: false
 server:
   port: 8080
+  tomcat:
+    accesslog:
+      enabled: true
+      pattern: "%t \"%r\" %s %b %D ms"
 entry-auth-service:
   url: ${ENTRY_AUTH_SERVICE_URL:http://entry-auth-service:8080}
 jwt:
