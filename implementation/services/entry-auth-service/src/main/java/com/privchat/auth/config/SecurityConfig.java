@@ -16,6 +16,7 @@ public class SecurityConfig {
         http
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**", "/actuator/health").permitAll()
+                .requestMatchers("/auth/jwks").permitAll()
                 .anyRequest().authenticated()
             )
             .csrf(AbstractHttpConfigurer::disable)  // SameSite=Strict cookie handles CSRF
