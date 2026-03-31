@@ -65,6 +65,26 @@ class JwtAuthFilterTest {
     }
 
     @Test
+    void actuatorHealthPath_skipsFilter() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean shouldSkip = filter.shouldNotFilter(request);
+
+        assertThat(shouldSkip).isTrue();
+    }
+
+    @Test
+    void nonActuatorPath_doesNotSkipFilter() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/rooms");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        boolean shouldSkip = filter.shouldNotFilter(request);
+
+        assertThat(shouldSkip).isFalse();
+    }
+
+    @Test
     void validToken_populatesSecurityContextAndContinuesChain() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer valid.token.here");

@@ -15,6 +15,10 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.Map;
+
 /**
  * JWT authentication filter for rooms-service.
  *
@@ -32,6 +36,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     public JwtAuthFilter(JwtService jwtService) {
         this.jwtService = jwtService;
+    }
+
+    /** Skip JWT validation for public endpoints (actuator, etc.). */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/actuator/");
     }
 
     @Override
