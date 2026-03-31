@@ -8,9 +8,10 @@
 
 ## 1. JWT Authentication Strategy
 
-**Decision**: HS256 JWT signed with a shared secret (`JWT_SECRET` env var ≥ 32 bytes).
-`entry-auth-service` issues the JWT on successful login; `rooms-service` validates it
-locally using the same secret. No per-request inter-service HTTP calls.
+**Decision**: RS256 JWT signed with an RSA private key held exclusively by
+`entry-auth-service`. `rooms-service` fetches the public key once at startup via a
+JWKS endpoint (`GET /auth/jwks`) and caches it locally for signature verification.
+No shared secret between services — only the public key is distributed.
 
 **JWT Claims**:
 ```json
@@ -28,29 +29,60 @@ locally using the same secret. No per-request inter-service HTTP calls.
 Java. Actively maintained, well-audited, minimal footprint.
 
 ```groovy
-// Both entry-auth-service and rooms-service build.gradle:
+// entry-auth-service build.gradle (issue + sign):
+implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+
+// rooms-service build.gradle (validate only):
 implementation("io.jsonwebtoken:jjwt-api:0.12.6")
 runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
 runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 ```
 
+**Key pair configuration** (entry-auth-service only):
+- RSA 2048-bit key pair loaded from env vars at startup
+- `JWT_PRIVATE_KEY`: base64-encoded PKCS#8 PEM private key (entry-auth-service only)
+- `JWT_PUBLIC_KEY`: base64-encoded X.509 PEM public key (entry-auth-service only)
+- If not set, service generates an ephemeral key pair at startup (dev mode — all issued
+  JWTs become invalid on restart)
+
+**JWKS endpoint** (new, entry-auth-service):
+- `GET /auth/jwks` — unauthenticated, returns public key in JWK Set format:
+```json
+{
+  "keys": [{
+    "kty": "RSA",
+    "use": "sig",
+    "alg": "RS256",
+    "kid": "priv-chat-1",
+    "n": "<base64url modulus>",
+    "e": "AQAB"
+  }]
+}
+```
+
 **Issue flow** (entry-auth-service):
 1. `POST /auth/join` succeeds → `JwtService.generateToken(username)` → JWT string
+   (signed RS256 with private key, header `"alg":"RS256","kid":"priv-chat-1"`)
 2. JWT returned in `JoinResponse.token` field (new field alongside existing `username`)
 3. `GET /auth/refresh-token` (new endpoint) → validates session → returns fresh JWT
 
 **Validation flow** (rooms-service):
-1. `JwtAuthFilter extends OncePerRequestFilter` intercepts every request
-2. Extracts `Authorization: Bearer <token>` header
-3. `JwtService.validateToken(token)` → verifies signature + expiry
-4. On success: injects `UsernamePasswordAuthenticationToken(username, ...)` into
+1. On startup: `JwksClient` fetches `GET /auth/jwks`, extracts `RSAPublicKey`, caches it
+2. `JwtAuthFilter extends OncePerRequestFilter` intercepts every request
+3. Extracts `Authorization: Bearer <token>` header
+4. `JwtService.validateToken(token)` → verifies RS256 signature using cached public key + expiry
+5. On success: injects `UsernamePasswordAuthenticationToken(username, ...)` into
    `SecurityContextHolder` — no session created (`SessionCreationPolicy.STATELESS`)
-5. On failure: returns `401 Unauthorized`
+6. On failure: returns `401 Unauthorized`
 
-**Why HS256 over RS256**:
-- Shared secret is simpler for a small fixed-topology deployment (two services)
-- RS256 requires a key pair and public key distribution mechanism
-- YAGNI: if more services need JWT validation, migrate to RS256 at that point
+**Why RS256 over HS256**:
+- No shared secret between services — only the public key is distributed
+- Private key never leaves `entry-auth-service` — if `rooms-service` is compromised,
+  it cannot forge tokens
+- Industry standard for microservices JWT auth (compatible with OAuth2/OIDC patterns)
+- Per-request inter-service calls are acceptable — JWKS fetch is cached, not per-request
 
 **Revocation tradeoff**:
 - JWTs are stateless — cannot be invalidated before expiry
@@ -59,13 +91,13 @@ runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 - The constitution explicitly accepts this: "token-based with short-lived credentials"
 
 **Alternatives Considered**:
-- **OAuth2 introspection (rooms-service calls entry-auth-service per request)**:
-  Adds network latency + failure mode on every rooms request. Rejected: complexity
-  without benefit in a two-service closed system.
-- **Shared Spring Session JDBC**: Violates database isolation requirement (user
-  instruction: separate databases). Rejected.
-- **API Key**: No expiry, no user identity encoded, not industry-standard for
-  user-context auth. Rejected.
+- **HS256 (shared secret)**: Simpler, but creates tight coupling — both services must
+  share `JWT_SECRET`; if rooms-service is compromised, attacker can forge tokens. Rejected.
+- **Token introspection per request**: Fully decoupled but adds ~1 network hop latency
+  per rooms API call + failure dependency on entry-auth-service availability. Rejected in
+  favour of cached JWKS (local validation with minimal coupling).
+- **Shared Spring Session JDBC**: Violates database isolation requirement. Rejected.
+- **API Key**: No expiry, no user identity encoded, not industry-standard. Rejected.
 
 ---
 
@@ -93,7 +125,7 @@ rooms-service:
     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-rooms:5432/${ROOMS_DB:-rooms}
     SPRING_DATASOURCE_USERNAME: ${ROOMS_DB_USER:-rooms}
     SPRING_DATASOURCE_PASSWORD: ${ROOMS_DB_PASSWORD:-changeme}
-    JWT_SECRET: ${JWT_SECRET}
+    ENTRY_AUTH_SERVICE_URL: http://entry-auth-service:8080
     JWT_EXPIRY_SECONDS: ${JWT_EXPIRY_SECONDS:-900}
   depends_on:
     postgres-rooms:
@@ -122,26 +154,66 @@ service. JWT is an additional artifact issued at join time for inter-service use
 ```java
 @Service
 public class JwtService {
-    @Value("${JWT_SECRET}") private String secret;
+    private final RSAPrivateKey privateKey;
+    private final RSAPublicKey publicKey;
     @Value("${JWT_EXPIRY_SECONDS:900}") private int expirySeconds;
 
+    public JwtService(
+        @Value("${JWT_PRIVATE_KEY:}") String privateKeyB64,
+        @Value("${JWT_PUBLIC_KEY:}") String publicKeyB64
+    ) {
+        if (privateKeyB64.isBlank()) {
+            // Dev mode: generate ephemeral key pair
+            KeyPair kp = generateRsaKeyPair();
+            this.privateKey = (RSAPrivateKey) kp.getPrivate();
+            this.publicKey  = (RSAPublicKey)  kp.getPublic();
+        } else {
+            this.privateKey = loadPrivateKey(privateKeyB64);
+            this.publicKey  = loadPublicKey(publicKeyB64);
+        }
+    }
+
     public String generateToken(String username) {
-        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         return Jwts.builder()
             .subject(username)
             .issuedAt(new Date())
             .expiration(new Date(System.currentTimeMillis() + expirySeconds * 1000L))
-            .signWith(key)
+            .signWith(privateKey)  // RS256 inferred from RSAPrivateKey
             .compact();
+    }
+
+    public RSAPublicKey getPublicKey() { return publicKey; }
+}
+```
+
+**New `JwksController` in entry-auth-service** (`GET /auth/jwks`):
+```java
+@RestController
+public class JwksController {
+    private final JwtService jwtService;
+
+    @GetMapping("/auth/jwks")
+    public Map<String, Object> jwks() {
+        RSAPublicKey pub = jwtService.getPublicKey();
+        return Map.of("keys", List.of(Map.of(
+            "kty", "RSA", "use", "sig", "alg", "RS256",
+            "kid", "priv-chat-1",
+            "n", Base64.getUrlEncoder().withoutPadding()
+                      .encodeToString(pub.getModulus().toByteArray()),
+            "e", Base64.getUrlEncoder().withoutPadding()
+                      .encodeToString(pub.getPublicExponent().toByteArray())
+        )));
     }
 }
 ```
+This endpoint is unauthenticated — `rooms-service` (and any future service) can fetch
+the public key without credentials.
 
 **Updated `JoinResponse`** (new `token` field):
 ```json
 {
   "username": "alice",
-  "token": "eyJhbGciOiJIUzI1NiJ9..."
+  "token": "eyJhbGciOiJSUzI1NiJ9..."
 }
 ```
 
@@ -203,6 +275,38 @@ public class SecurityConfig {
 ```
 
 No `@EnableJdbcHttpSession` — rooms-service creates no sessions.
+
+---
+
+## 5a. JWKS Client in rooms-service
+
+On startup, `rooms-service` fetches the public key from `entry-auth-service`:
+
+```java
+@Component
+public class JwksClient {
+    private volatile RSAPublicKey cachedPublicKey;
+    private final String jwksUrl;
+
+    public JwksClient(@Value("${ENTRY_AUTH_SERVICE_URL}") String baseUrl,
+                      RestClient restClient) {
+        this.jwksUrl = baseUrl + "/auth/jwks";
+        this.cachedPublicKey = fetchPublicKey(restClient);
+    }
+
+    public RSAPublicKey getPublicKey() { return cachedPublicKey; }
+
+    private RSAPublicKey fetchPublicKey(RestClient client) {
+        // Parse JWKS JSON → decode n, e → reconstruct RSAPublicKey
+        // Uses standard java.security.spec.RSAPublicKeySpec
+    }
+}
+```
+
+`JwtService` in rooms-service uses `JwksClient.getPublicKey()` for all token validation.
+The fetch happens once at startup (not per request) — `rooms-service` depends on
+`entry-auth-service` being healthy before starting (enforced via Docker Compose
+`depends_on: condition: service_healthy`).
 
 ---
 

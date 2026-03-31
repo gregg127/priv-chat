@@ -9,9 +9,10 @@ Build `rooms-service` — a new Spring Boot 4.0.4 / Java 25 microservice providi
 full CRUD for public chat rooms. `rooms-service` owns its own dedicated PostgreSQL
 database (separate Docker container — true microservices database isolation). Session
 authentication between the browser and `entry-auth-service` is unchanged (server-side
-sessions). Inter-service authentication uses **JWT (HS256)**: `entry-auth-service`
-issues a short-lived JWT on login and exposes a refresh endpoint; `rooms-service`
-validates JWTs locally using the shared secret — no per-request HTTP calls to
+sessions). Inter-service authentication uses **JWT (RS256)**: `entry-auth-service`
+issues a short-lived JWT on login and exposes both a refresh endpoint and a JWKS
+endpoint (`GET /auth/jwks`); `rooms-service` fetches the RSA public key once at
+startup and validates JWTs locally — no per-request HTTP calls to
 `entry-auth-service`. The API gateway gains a `RoomsProxyController` that forwards
 `/rooms/**` traffic including the JWT `Authorization` header to `rooms-service`.
 
@@ -26,7 +27,7 @@ expands scope to include them per the explicit planning instruction.
 **Build**: Gradle (Groovy DSL, same as `entry-auth-service`)
 **Primary Dependencies**:
 - Spring Web, Spring Security (rooms-service)
-- JJWT 0.12.6 (JWT issue + validation — both services)
+- JJWT 0.12.6 (JWT issue + validation — both services; RS256 key pair)
 - jOOQ 3.20.4, Flyway 11.20.3 (rooms-service)
 - Testcontainers 1.21.4 (PostgreSQL for integration tests)
 **Storage**:
@@ -56,7 +57,8 @@ out of scope for this feature. Threat model below records this formally.
 ### II. Security First ✅
 
 - Spring Security JWT filter enforces authentication on all `/rooms/**` endpoints
-- JWT signed HS256 with a secret ≥ 32 bytes, injected via env var (never in code)
+- JWT signed RS256 with RSA key pair; private key never leaves `entry-auth-service`
+- Public key distributed via `GET /auth/jwks` (JWKS format); rooms-service caches on startup
 - Short-lived JWT (15 minutes) limits the revocation window on logout
 - Creator-only enforcement on update/delete: username from JWT claims, never from request body
 - Room creation cap (max 10 per user) enforced server-side in `RoomService`
@@ -79,8 +81,10 @@ on all rooms API calls.
 
 ### V. Simplicity & YAGNI ✅
 
-Local JWT validation eliminates per-request inter-service HTTP calls entirely.
-JJWT is a single well-audited dependency. Separate PostgreSQL container adds one
+JWKS-based JWT validation: `entry-auth-service` signs with RSA private key and exposes
+`GET /auth/jwks`; `rooms-service` fetches public key once at startup and validates
+locally — no per-request inter-service HTTP calls. Private key never leaves the issuing
+service — compromised `rooms-service` cannot forge tokens.
 service to docker-compose but is required for true DB isolation.
 
 ## Threat Model
@@ -89,8 +93,8 @@ service to docker-compose but is required for true DB isolation.
 |--------|------------|
 | Unauthenticated room access | Spring Security `anyRequest().authenticated()` + JWT filter on all `/rooms/**` |
 | JWT revocation window on logout | Short expiry (15 min); frontend discards JWT on logout; session cookie deleted by entry-auth-service |
-| JWT secret exposure | Secret injected via `JWT_SECRET` env var (≥ 32 bytes); never in source code or logs |
-| JWT tampering / forging | HS256 signature verified by JJWT on every request; invalid signature → 401 |
+| JWT private key exposure | Private key injected via `JWT_PRIVATE_KEY` env var (base64 PEM); never in source code or logs; only in `entry-auth-service` |
+| JWT tampering / forging | RS256 signature verified by JJWT on every request; invalid signature → 401 |
 | Room metadata plaintext on server | Accepted risk (documented exception). Mitigated: only authenticated users (valid JWT) can read |
 | SQL injection in rooms-service | jOOQ parameterized queries — no raw SQL string concatenation permitted |
 | Room creation spam (10-room cap) | `user_room_stats.active_rooms_count` checked + enforced atomically in transaction |
@@ -129,7 +133,7 @@ implementation/
 │   │       │   └── dto/
 │   │       │       ├── JoinResponse.java   (updated: add token field)
 │   │       │       └── TokenResponse.java  (NEW: for refresh endpoint)
-│   │       └── resources/application.yml  (add JWT_SECRET, JWT_EXPIRY_SECONDS)
+│   │       └── resources/application.yml  (add JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, JWT_EXPIRY_SECONDS)
 │   │
 │   └── rooms-service/                   ← NEW
 │       ├── build.gradle
@@ -188,7 +192,7 @@ controller. Frontend gets one new page + API client.
 | Addition | Why Needed | YAGNI Justification |
 |----------|------------|---------------------|
 | Separate `postgres-rooms` container | True DB isolation per microservices principle (user requirement) | Cannot share DB if isolation is required |
-| JJWT dependency in both services | JWT issue (entry-auth) + local validation (rooms) — no per-request HTTP | Lighter than alternative: HTTP token introspection on every rooms request |
+| JJWT + RS256 key pair | JWT issue/sign (entry-auth) + JWKS endpoint + local validation (rooms) | Private key stays in entry-auth; no shared secret coupling |
 | `user_room_stats` table | Track naming counter + active cap atomically | Single table; both counters needed in same transaction |
 | `room_audit_log` table | Constitution: audit trail for all mutations | Required; reuses pattern from `security_audit_log` |
 

@@ -7,8 +7,9 @@
 
 All requests and responses use `Content-Type: application/json`.
 All endpoints require `Authorization: Bearer <jwt>` where `<jwt>` is issued
-by `entry-auth-service` on login or refresh. `rooms-service` validates the JWT
-locally — no inter-service HTTP calls per request.
+by `entry-auth-service` on login or refresh. `rooms-service` fetches the RSA public key
+once at startup via `GET /auth/jwks` (JWKS endpoint) and validates tokens locally — no
+per-request inter-service HTTP calls. Private key never leaves `entry-auth-service`.
 `rooms-service` is not directly exposed; all traffic routes through the API gateway.
 
 ---
@@ -17,7 +18,7 @@ locally — no inter-service HTTP calls per request.
 
 Every request must include:
 ```
-Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+Authorization: Bearer eyJhbGciOiJSUzI1NiJ9...
 ```
 
 JWT is issued by `entry-auth-service POST /auth/join` (`token` field in response)
@@ -245,10 +246,30 @@ All error responses: `{ "error": "Human-readable message" }`
 ```json
 {
   "username": "alice",
-  "token": "eyJhbGciOiJIUzI1NiJ9..."
+  "token": "eyJhbGciOiJSUzI1NiJ9..."
 }
 ```
 (`token` field is new; JWT expires in `JWT_EXPIRY_SECONDS` seconds, default 900)
+
+### New: GET /auth/jwks
+
+Returns the RSA public key in JWK Set format. Unauthenticated.
+
+**200 OK**:
+```json
+{
+  "keys": [{
+    "kty": "RSA",
+    "use": "sig",
+    "alg": "RS256",
+    "kid": "priv-chat-1",
+    "n": "<base64url modulus>",
+    "e": "AQAB"
+  }]
+}
+```
+Used by `rooms-service` (and any future service) at startup to obtain the public key
+for local JWT signature verification. No credentials required.
 
 ### New: GET /auth/refresh-token
 
@@ -273,7 +294,7 @@ Validates the current session cookie and issues a fresh JWT.
 - `creatorUsername` in responses is informational; authorization uses JWT `sub` only
 - All mutation endpoints (POST, PUT, DELETE) write to `room_audit_log`
 - `rooms-service` creates no server-side sessions (`SessionCreationPolicy.STATELESS`)
-- `JWT_SECRET` must be ≥ 32 bytes and must be identical in both services
+- `JWT_PRIVATE_KEY` (base64 PEM) is held exclusively by `entry-auth-service` — never shared
 - `rooms-service` has no published Docker port — accessible only via `privchat-net`
 
 ---

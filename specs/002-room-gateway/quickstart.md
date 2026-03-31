@@ -9,7 +9,7 @@
 
 - Java 25 (`java --version`)
 - Docker + Docker Compose (`docker compose version`)
-- `JWT_SECRET` env var set (≥ 32 characters) — must be the same for both services
+- `JWT_PRIVATE_KEY` env var set (base64 PEM) in `entry-auth-service` — or omit for ephemeral dev key
 
 ---
 
@@ -28,8 +28,15 @@ ROOMS_DB=rooms
 ROOMS_DB_USER=rooms
 ROOMS_DB_PASSWORD=changeme-rooms
 
-# JWT shared secret (≥ 32 chars — CHANGE THIS IN PRODUCTION)
-JWT_SECRET=this-is-a-dev-secret-must-be-32chars-min
+# RSA key pair for JWT signing (entry-auth-service only)
+# Leave blank in dev to use ephemeral key pair (generated at startup)
+# CHANGE THIS IN PRODUCTION: generate with:
+#   openssl genrsa -out private.pem 2048
+#   openssl pkcs8 -topk8 -nocrypt -in private.pem -out private_pkcs8.pem
+#   JWT_PRIVATE_KEY=$(base64 -w0 < private_pkcs8.pem)
+#   JWT_PUBLIC_KEY=$(openssl rsa -in private.pem -pubout 2>/dev/null | base64 -w0)
+JWT_PRIVATE_KEY=
+JWT_PUBLIC_KEY=
 JWT_EXPIRY_SECONDS=900
 ```
 
@@ -126,8 +133,9 @@ cd implementation/services/rooms-service
 
 | Variable | Default | Service | Description |
 |----------|---------|---------|-------------|
-| `JWT_SECRET` | *(required)* | both | HS256 signing secret — min 32 bytes |
-| `JWT_EXPIRY_SECONDS` | `900` | both | JWT lifetime in seconds (default 15 min) |
+| `JWT_PRIVATE_KEY` | *(empty = ephemeral)* | entry-auth-service | Base64 PKCS#8 PEM RSA private key for signing |
+| `JWT_PUBLIC_KEY` | *(empty = ephemeral)* | entry-auth-service | Base64 X.509 PEM RSA public key (paired with private) |
+| `JWT_EXPIRY_SECONDS` | `900` | entry-auth-service | JWT lifetime in seconds (default 15 min) |
 | `ROOMS_DB` | `rooms` | rooms-service | PostgreSQL DB name |
 | `ROOMS_DB_USER` | `rooms` | rooms-service | PostgreSQL username |
 | `ROOMS_DB_PASSWORD` | `changeme-rooms` | rooms-service | PostgreSQL password |
