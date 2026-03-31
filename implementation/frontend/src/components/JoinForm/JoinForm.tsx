@@ -5,8 +5,8 @@ import { AuthApiError } from '@/lib/authApi';
 
 export interface JoinFormProps {
   defaultUsername?: string;
-  onSuccess: (username: string) => void;
-  onSubmit: (username: string, password: string) => Promise<void>;
+  onSuccess: (username: string, token?: string) => void;
+  onSubmit: (username: string, password: string) => Promise<{ username: string; token?: string }>;
 }
 
 export default function JoinForm({ defaultUsername = '', onSuccess, onSubmit }: JoinFormProps) {
@@ -36,8 +36,8 @@ export default function JoinForm({ defaultUsername = '', onSuccess, onSubmit }: 
 
     setLoading(true);
     try {
-      await onSubmit(trimmedUsername, password);
-      onSuccess(trimmedUsername);
+      const result = await onSubmit(trimmedUsername, password);
+      onSuccess(trimmedUsername, result?.token);
     } catch (err) {
       if (err instanceof AuthApiError) {
         if (err.status === 429 && err.retryAfterSeconds !== undefined) {
