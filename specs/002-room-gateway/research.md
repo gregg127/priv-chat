@@ -6,66 +6,168 @@
 
 ---
 
-## 1. Authentication Strategy: Shared Spring Session JDBC
+## 1. JWT Authentication Strategy
 
-**Decision**: `rooms-service` configures `spring-session-jdbc` pointing to the same
-PostgreSQL instance as `entry-auth-service`. Spring Security's session filter chain
-resolves the `SESSION` cookie against the shared `SPRING_SESSION` tables automatically.
-No direct HTTP calls from `rooms-service` to `entry-auth-service` are needed.
+**Decision**: HS256 JWT signed with a shared secret (`JWT_SECRET` env var ≥ 32 bytes).
+`entry-auth-service` issues the JWT on successful login; `rooms-service` validates it
+locally using the same secret. No per-request inter-service HTTP calls.
 
-**Rationale**: The user session is a PostgreSQL row. Both services share the database.
-Sharing the session store is the simplest approach that satisfies the authentication
-requirement: zero additional network hops, zero coupling to `entry-auth-service`'s HTTP
-API, and automatic session extension on every rooms request (rolling expiry).
+**JWT Claims**:
+```json
+{
+  "sub": "alice",
+  "iat": 1743451200,
+  "exp": 1743452100
+}
+```
+- `sub`: portal username (used as principal in rooms-service)
+- `iat`: issued-at epoch seconds
+- `exp`: expiry epoch seconds (`iat + JWT_EXPIRY_SECONDS`, default 900 = 15 minutes)
 
-**How it works**:
-1. `entry-auth-service` creates the session row on `POST /auth/join` and sets the
-   `SESSION` HttpOnly cookie.
-2. The gateway proxy (`RoomsProxyController`) forwards all headers including `Cookie`
-   to `rooms-service` — identical to how `AuthProxyController` works today.
-3. `rooms-service` Spring Security intercepts the request, finds the `SESSION` cookie,
-   looks up the session row in PostgreSQL, validates expiry, and injects a
-   `UsernamePasswordAuthenticationToken` principal for the request.
-4. Controller methods read the authenticated username via
-   `SecurityContextHolder.getContext().getAuthentication().getName()`.
+**Library**: JJWT 0.12.6 (`io.jsonwebtoken`) — the de-facto standard JWT library for
+Java. Actively maintained, well-audited, minimal footprint.
 
-**Spring Security principal resolution**: Spring Session JDBC stores `PRINCIPAL_NAME`
-in the `SPRING_SESSION` table — this is the `username` set by `entry-auth-service` at
-join time. Spring Security uses this as the principal name automatically when
-`@EnableJdbcHttpSession` is active.
+```groovy
+// Both entry-auth-service and rooms-service build.gradle:
+implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
+```
+
+**Issue flow** (entry-auth-service):
+1. `POST /auth/join` succeeds → `JwtService.generateToken(username)` → JWT string
+2. JWT returned in `JoinResponse.token` field (new field alongside existing `username`)
+3. `GET /auth/refresh-token` (new endpoint) → validates session → returns fresh JWT
+
+**Validation flow** (rooms-service):
+1. `JwtAuthFilter extends OncePerRequestFilter` intercepts every request
+2. Extracts `Authorization: Bearer <token>` header
+3. `JwtService.validateToken(token)` → verifies signature + expiry
+4. On success: injects `UsernamePasswordAuthenticationToken(username, ...)` into
+   `SecurityContextHolder` — no session created (`SessionCreationPolicy.STATELESS`)
+5. On failure: returns `401 Unauthorized`
+
+**Why HS256 over RS256**:
+- Shared secret is simpler for a small fixed-topology deployment (two services)
+- RS256 requires a key pair and public key distribution mechanism
+- YAGNI: if more services need JWT validation, migrate to RS256 at that point
+
+**Revocation tradeoff**:
+- JWTs are stateless — cannot be invalidated before expiry
+- Mitigated by 15-minute expiry: max exposure window on logout is 15 minutes
+- Frontend discards the JWT immediately on logout
+- The constitution explicitly accepts this: "token-based with short-lived credentials"
 
 **Alternatives Considered**:
-- **HTTP call: rooms-service → entry-auth-service GET /auth/session per request**:
-  Adds a network round-trip on every request. Introduces a failure mode (entry-auth-
-  service unavailable → all room operations fail). More coupling. Rejected: YAGNI.
-- **API Gateway pre-auth filter**: Gateway validates session before forwarding.
-  Adds complexity to the gateway (currently a dumb proxy). Rooms-service would need
-  to trust an `X-Username` header. Adds a gateway-specific security dependency.
-  Rejected: more complex than shared session store for the same outcome.
-- **JWT tokens**: Stateless. Constitution explicitly rejects stateless JWTs (cannot
-  be invalidated server-side). Rejected: constitution violation.
-
-**Key Notes**:
-- `rooms-service` must use the same `spring.session.jdbc` configuration as
-  `entry-auth-service` (same `SESSION` cookie name, same table names).
-- `rooms-service` does NOT call `JdbcIndexedSessionRepository.setDefaultMaxInactive
-  Interval()` — session lifetime is managed exclusively by `entry-auth-service`.
-- The `SessionConfig` in rooms-service sets `SESSION_COOKIE_SECURE` from env var
-  (same pattern) but does NOT override `setDefaultMaxInactiveInterval`.
+- **OAuth2 introspection (rooms-service calls entry-auth-service per request)**:
+  Adds network latency + failure mode on every rooms request. Rejected: complexity
+  without benefit in a two-service closed system.
+- **Shared Spring Session JDBC**: Violates database isolation requirement (user
+  instruction: separate databases). Rejected.
+- **API Key**: No expiry, no user identity encoded, not industry-standard for
+  user-context auth. Rejected.
 
 ---
 
-## 2. API Gateway: RoomsProxyController
+## 2. Separate PostgreSQL Database
 
-**Decision**: Add `RoomsProxyController` to the existing gateway, mirroring the
-`AuthProxyController` pattern exactly. Map `@RequestMapping("/rooms/**")` to
-`rooms-service` via a `RestClient` configured with `ROOMS_SERVICE_URL` env var.
+**Decision**: Add a dedicated `postgres-rooms` PostgreSQL 17 container to
+`docker-compose.yml`. `rooms-service` connects exclusively to this container.
+`entry-auth-service` continues using `postgres` (unchanged).
 
-**Rationale**: The gateway already uses a custom RestClient proxy pattern rather than
-Spring Cloud Gateway. The rooms proxy is a copy-paste of AuthProxyController with the
-base URL and path prefix swapped. Zero new dependencies needed in the gateway.
+**Configuration**:
+```yaml
+# docker-compose.yml addition
+postgres-rooms:
+  image: postgres:17-alpine
+  environment:
+    POSTGRES_DB:       ${ROOMS_DB:-rooms}
+    POSTGRES_USER:     ${ROOMS_DB_USER:-rooms}
+    POSTGRES_PASSWORD: ${ROOMS_DB_PASSWORD:-changeme}
+  volumes: [postgres_rooms_data:/var/lib/postgresql/data]
+  networks: [privchat-net]
+  healthcheck: { ... }
 
-**Configuration addition in `application.yml`**:
+rooms-service:
+  environment:
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-rooms:5432/${ROOMS_DB:-rooms}
+    SPRING_DATASOURCE_USERNAME: ${ROOMS_DB_USER:-rooms}
+    SPRING_DATASOURCE_PASSWORD: ${ROOMS_DB_PASSWORD:-changeme}
+    JWT_SECRET: ${JWT_SECRET}
+    JWT_EXPIRY_SECONDS: ${JWT_EXPIRY_SECONDS:-900}
+  depends_on:
+    postgres-rooms:
+      condition: service_healthy
+```
+
+**Why separate container over separate database in shared instance**:
+- True isolation: separate credentials, separate data volume, independent backups
+- Reflects real microservices architecture where each service owns its DB host
+- No risk of accidentally reading auth tables from rooms-service
+
+**Alternatives Considered**:
+- **Separate database (same PostgreSQL container)**: Simpler setup but `POSTGRES_DB`
+  can only specify one default database; requires manual `CREATE DATABASE` in init
+  scripts. Still shares a PostgreSQL process — not true isolation. Rejected.
+
+---
+
+## 3. entry-auth-service Changes (JWT Addition)
+
+`entry-auth-service` is updated minimally to issue JWTs. Session management is
+unchanged — the browser still uses the server-side session cookie for the auth
+service. JWT is an additional artifact issued at join time for inter-service use.
+
+**New `JwtService` in entry-auth-service**:
+```java
+@Service
+public class JwtService {
+    @Value("${JWT_SECRET}") private String secret;
+    @Value("${JWT_EXPIRY_SECONDS:900}") private int expirySeconds;
+
+    public String generateToken(String username) {
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        return Jwts.builder()
+            .subject(username)
+            .issuedAt(new Date())
+            .expiration(new Date(System.currentTimeMillis() + expirySeconds * 1000L))
+            .signWith(key)
+            .compact();
+    }
+}
+```
+
+**Updated `JoinResponse`** (new `token` field):
+```json
+{
+  "username": "alice",
+  "token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+**New endpoint: `GET /auth/refresh-token`**:
+- Requires valid session cookie
+- Returns `{ "token": "..." }` with a fresh JWT
+- Used by frontend before rooms API calls when JWT is near expiry
+
+**Impact on existing frontend**: The Next.js app must:
+1. Store the JWT from `JoinResponse.token` in memory (React state / context)
+2. Pass `Authorization: Bearer <token>` on all calls to `/rooms/**`
+3. Call `GET /auth/refresh-token` when JWT is near expiry (e.g., within 60 seconds)
+
+---
+
+## 4. API Gateway: RoomsProxyController
+
+**Decision**: Add `RoomsProxyController` to the existing gateway, mirroring
+`AuthProxyController` exactly. Maps `@RequestMapping("/rooms/**")` to `rooms-service`
+via a `RestClient` configured with `ROOMS_SERVICE_URL` env var.
+
+The gateway forwards the `Authorization: Bearer` header as-is (it already copies all
+headers except `Host` and `Content-Length` in the proxy pattern). No gateway-level
+auth validation needed — `rooms-service` validates the JWT itself.
+
+**`application.yml` addition**:
 ```yaml
 services:
   auth:
@@ -74,97 +176,46 @@ services:
     url: ${ROOMS_SERVICE_URL:http://rooms-service:8080}
 ```
 
-**Cookie forwarding**: The proxy forwards the `Cookie` header unchanged, which carries
-the `SESSION` cookie to `rooms-service` for authentication resolution.
-
 ---
 
-## 3. jOOQ Code Generation for rooms-service
+## 5. Spring Security in rooms-service (Stateless JWT)
 
-**Decision**: Same jOOQ 3.20.4 + `nu.studer.jooq` Gradle plugin configuration as
-`entry-auth-service`. Use Flyway migrations to create the schema before jOOQ generates.
-Use `org.jooq:jooq-meta-extensions` for offline DDL-based generation (no live DB needed
-during build).
-
-**Key configuration**:
-```groovy
-jooq {
-    version = '3.20.4'
-    configurations {
-        main {
-            generationTool {
-                generator {
-                    database {
-                        name = 'org.jooq.meta.extensions.ddl.DDLDatabase'
-                        properties {
-                            property { key = 'scripts'; value = 'src/main/resources/db/migration' }
-                            property { key = 'sort'; value = 'flyway' }
-                        }
-                    }
-                    target {
-                        packageName = 'com.privchat.rooms.jooq'
-                        directory   = 'build/generated-sources/jooq'
-                    }
-                }
-            }
-        }
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   JwtAuthFilter jwtAuthFilter) {
+        return http
+            .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(a -> a
+                .requestMatchers("/actuator/health").permitAll()
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+            .csrf(AbstractHttpConfigurer::disable)
+            .formLogin(AbstractHttpConfigurer::disable)
+            .httpBasic(AbstractHttpConfigurer::disable)
+            .build();
     }
 }
 ```
 
----
-
-## 4. Room Naming Sequence & Creation Cap
-
-**Decision**: Track per-user state in a `user_room_stats` table with two counters:
-- `rooms_created_count` — monotonically increasing, used to compute the next name
-  (`{username}-room-{rooms_created_count + 1}`), never decremented even on delete
-- `active_rooms_count` — incremented on create, decremented on delete, capped at 10
-
-**Rationale**: Separating the naming counter from the active count ensures names are
-unique and never reused (e.g., `alice-room-3` is never re-created after deletion).
-The cap check uses `active_rooms_count` so deleted rooms free up a slot.
-
-**Name collision handling** (per edge case in spec): After generating the default name
-`{username}-room-{n}`, check for uniqueness in the `rooms` table. If the name exists
-(e.g., due to a manual rename of another room to that name), increment `n` until a
-free name is found. This loop is bounded by the 10-room cap.
-
-**Atomic operation**: The `RoomService.createRoom()` method executes the following in
-a single database transaction:
-1. `INSERT ... ON CONFLICT DO NOTHING` into `user_room_stats` to ensure row exists
-2. Check `active_rooms_count < 10` (throw `RoomLimitExceededException` if not)
-3. Find next available name
-4. `INSERT` into `rooms`
-5. `UPDATE user_room_stats SET rooms_created_count = rooms_created_count + 1,
-   active_rooms_count = active_rooms_count + 1`
-6. `INSERT` into `room_audit_log`
+No `@EnableJdbcHttpSession` — rooms-service creates no sessions.
 
 ---
 
-## 5. Occupant Count
+## 6. Room Naming Sequence & Creation Cap
 
-**Decision**: `rooms.active_member_count` is a denormalized `INT` column defaulting
-to 0. It is set to 0 at room creation and reserved for update by the future
-messaging/chat feature when users enter or leave rooms. For this feature, all rooms
-show 0 occupants.
-
-**Rationale**: The spec (clarification Q3) requires occupant count in the room card.
-The rooms-service owns room metadata. Tracking real-time occupancy requires the chat
-feature (out of scope here). The column is present and ready; the update mechanism
-will be defined in the chat feature's plan.
+Unchanged from original design (see plan.md). `user_room_stats` table with two
+counters: `rooms_created_count` (monotonic, for naming) and `active_rooms_count`
+(bounded 0–10, for cap enforcement). Both updated atomically in the same transaction
+as the room insert.
 
 ---
 
-## 6. Docker Compose Addition
+## 7. jOOQ Code Generation
 
-**Decision**: Add `rooms-service` to `docker-compose.yml` following the same pattern
-as `entry-auth-service`:
-- No published ports (internal network only)
-- `depends_on: postgres` with health condition
-- Health check via `GET /actuator/health`
-- Environment variables: `SPRING_DATASOURCE_*`, `SESSION_COOKIE_SECURE`,
-  `SESSION_TIMEOUT_SECONDS` (read-only; managed by entry-auth-service)
-
-Update `api-gateway` `depends_on` to also include `rooms-service`.
-Add `ROOMS_SERVICE_URL: http://rooms-service:8080` to gateway env vars.
+Identical configuration to `entry-auth-service`. DDL-based generation from Flyway
+migration scripts. Package: `com.privchat.rooms.jooq`.

@@ -6,40 +6,45 @@
 **Date**: 2026-03-31
 
 All requests and responses use `Content-Type: application/json`.
-All endpoints require a valid `SESSION` cookie (established by `entry-auth-service`).
-All endpoints return `401 Unauthorized` when no valid session is present.
+All endpoints require `Authorization: Bearer <jwt>` where `<jwt>` is issued
+by `entry-auth-service` on login or refresh. `rooms-service` validates the JWT
+locally — no inter-service HTTP calls per request.
 `rooms-service` is not directly exposed; all traffic routes through the API gateway.
 
 ---
 
 ## Authentication
 
-Every request must carry the `SESSION` cookie. `rooms-service` resolves it via the
-shared Spring Session JDBC store. No login endpoint exists on this service.
-
-**Unauthenticated response** (applies to all endpoints below):
-
-```json
-HTTP/1.1 401 Unauthorized
-{
-  "error": "Authentication required"
-}
+Every request must include:
 ```
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+```
+
+JWT is issued by `entry-auth-service POST /auth/join` (`token` field in response)
+and can be refreshed via `entry-auth-service GET /auth/refresh-token`.
+
+JWT expiry: 15 minutes (configurable via `JWT_EXPIRY_SECONDS`).
+
+**Unauthenticated / invalid JWT response** (applies to all endpoints):
+```
+HTTP/1.1 401 Unauthorized
+{ "error": "Authentication required" }
+```
+
+Causes: missing header, malformed JWT, invalid signature, expired token.
 
 ---
 
 ## GET /rooms
 
-List all public rooms, ordered by creation time (newest first).
+List all public rooms ordered by creation time (newest first).
 
 ### Request
-
-No body. Requires valid `SESSION` cookie.
+No body. Requires `Authorization: Bearer <jwt>`.
 
 ### Responses
 
 #### 200 OK
-
 ```json
 [
   {
@@ -58,42 +63,31 @@ No body. Requires valid `SESSION` cookie.
   }
 ]
 ```
+Returns `[]` when no rooms exist. No pagination in v1.
 
-Returns an empty array `[]` when no rooms exist (empty-state case).
-
-**Notes**:
-- `activeMemberCount` is always `0` until the chat/messaging feature updates it
-- No pagination in v1; all rooms returned in a single response
+**Note**: `activeMemberCount` is always `0` until the chat feature updates it.
 
 ---
 
 ## POST /rooms
 
-Create a new public room. The room name is automatically generated as
-`{username}-room-{n}` where `n` is the user's next sequential room number.
-The user is capped at 10 active rooms.
+Create a new public room. Name auto-generated as `{username}-room-{n}` (where
+`n` = user's next sequential number). A custom name may optionally be provided.
 
 ### Request
-
-No body required. The room name is derived server-side from the authenticated username
-and the user's `rooms_created_count + 1` from `user_room_stats`.
-
-Optionally, a custom name may be provided (CRUD extension):
-
 ```json
-{
-  "name": "my-custom-room"
-}
+{}
 ```
-
-- If `name` is omitted or null, the default naming pattern is used
-- `name` max length: 100 characters
-- `name` must be unique across all rooms
+Or with an optional custom name:
+```json
+{ "name": "my-custom-room" }
+```
+- `name`: optional; max 100 characters; must be globally unique
+- If omitted or `null`, default naming pattern is used
 
 ### Responses
 
 #### 201 Created
-
 ```json
 {
   "id": 5,
@@ -103,52 +97,35 @@ Optionally, a custom name may be provided (CRUD extension):
   "activeMemberCount": 0
 }
 ```
+**Side effects**: room inserted; `user_room_stats` counters incremented; `CREATE_ROOM` audit log entry.
 
-**Side effects**:
-- Room inserted into `rooms` table
-- `user_room_stats.rooms_created_count` and `active_rooms_count` incremented
-- `CREATE_ROOM` event written to `room_audit_log`
-
-#### 409 Conflict — Room name already taken (custom name only)
-
+#### 422 Unprocessable Entity — cap reached
 ```json
-{
-  "error": "Room name already taken"
-}
+{ "error": "Room limit reached — you cannot create more than 10 rooms" }
 ```
 
-#### 422 Unprocessable Entity — Room creation limit reached
-
+#### 409 Conflict — custom name already taken
 ```json
-{
-  "error": "Room limit reached — you cannot create more than 10 rooms"
-}
+{ "error": "Room name already taken" }
 ```
 
-**Side effects**: None (no audit log entry; no state change)
-
-#### 400 Bad Request — Validation failure
-
+#### 400 Bad Request — validation failure
 ```json
-{
-  "error": "Room name must not exceed 100 characters"
-}
+{ "error": "Room name must not exceed 100 characters" }
 ```
 
 ---
 
 ## GET /rooms/{id}
 
-Retrieve a single room by its ID.
+Get a single room by ID.
 
 ### Request
-
-No body. Requires valid `SESSION` cookie.
+No body. Requires `Authorization: Bearer <jwt>`.
 
 ### Responses
 
 #### 200 OK
-
 ```json
 {
   "id": 1,
@@ -160,167 +137,150 @@ No body. Requires valid `SESSION` cookie.
 ```
 
 #### 404 Not Found
-
 ```json
-{
-  "error": "Room not found"
-}
+{ "error": "Room not found" }
 ```
 
 ---
 
 ## PUT /rooms/{id}
 
-Update a room's name. Only the room creator may update the room.
+Update a room's name. Creator only (JWT `sub` must match `rooms.creator_username`).
 
 ### Request
-
 ```json
-{
-  "name": "alice-new-name"
-}
+{ "name": "alice-renamed" }
 ```
-
-**Validation rules**:
-- `name`: required, non-empty after trimming, max 100 characters, must be globally unique
+- `name`: required, non-empty after trimming, max 100 characters, globally unique
 
 ### Responses
 
 #### 200 OK
-
 ```json
 {
   "id": 1,
-  "name": "alice-new-name",
+  "name": "alice-renamed",
   "creatorUsername": "alice",
   "createdAt": "2026-03-31T19:00:00Z",
   "activeMemberCount": 0
 }
 ```
+**Side effects**: `rooms.name` updated; `UPDATE_ROOM` audit log entry.
 
-**Side effects**:
-- `rooms.name` updated
-- `UPDATE_ROOM` event written to `room_audit_log` (includes old name in a `details` field)
-
-#### 403 Forbidden — Authenticated user is not the room creator
-
+#### 403 Forbidden — not the creator
 ```json
-{
-  "error": "Only the room creator can update this room"
-}
+{ "error": "Only the room creator can update this room" }
 ```
-
-**Side effects**:
-- `UNAUTHORIZED_ATTEMPT` event written to `room_audit_log`
+**Side effects**: `UNAUTHORIZED_ATTEMPT` audit log entry.
 
 #### 404 Not Found
-
 ```json
-{
-  "error": "Room not found"
-}
+{ "error": "Room not found" }
 ```
 
-#### 409 Conflict — Name already taken
-
+#### 409 Conflict
 ```json
-{
-  "error": "Room name already taken"
-}
+{ "error": "Room name already taken" }
 ```
 
 #### 400 Bad Request
-
 ```json
-{
-  "error": "Room name is required"
-}
+{ "error": "Room name is required" }
 ```
 
 ---
 
 ## DELETE /rooms/{id}
 
-Delete a room. Only the room creator may delete the room.
+Delete a room. Creator only (JWT `sub` must match `rooms.creator_username`).
 
 ### Request
-
-No body. Requires valid `SESSION` cookie.
+No body. Requires `Authorization: Bearer <jwt>`.
 
 ### Responses
 
 #### 204 No Content
-
 *(empty body)*
 
-**Side effects**:
-- Room deleted from `rooms` table
-- `user_room_stats.active_rooms_count` decremented (frees up one slot for future creation)
-- `DELETE_ROOM` event written to `room_audit_log` (includes room name snapshot)
+**Side effects**: room deleted; `user_room_stats.active_rooms_count` decremented (slot freed); `DELETE_ROOM` audit log entry (with room name snapshot).
 
-#### 403 Forbidden — Authenticated user is not the room creator
-
+#### 403 Forbidden — not the creator
 ```json
-{
-  "error": "Only the room creator can delete this room"
-}
+{ "error": "Only the room creator can delete this room" }
 ```
-
-**Side effects**:
-- `UNAUTHORIZED_ATTEMPT` event written to `room_audit_log`
+**Side effects**: `UNAUTHORIZED_ATTEMPT` audit log entry.
 
 #### 404 Not Found
-
 ```json
-{
-  "error": "Room not found"
-}
+{ "error": "Room not found" }
 ```
 
 ---
 
 ## Error Response Format
 
-All error responses follow the same structure:
-
-```json
-{
-  "error": "Human-readable error message"
-}
-```
-
-HTTP status codes used:
+All error responses: `{ "error": "Human-readable message" }`
 
 | Code | Meaning |
 |------|---------|
 | 200 | OK |
 | 201 | Created |
 | 204 | No Content |
-| 400 | Bad Request (validation failure) |
-| 401 | Unauthorized (no valid session) |
-| 403 | Forbidden (valid session but not permitted) |
-| 404 | Not Found |
-| 409 | Conflict (name uniqueness violation) |
-| 422 | Unprocessable Entity (business rule violation — room cap) |
+| 400 | Validation failure |
+| 401 | Missing / invalid / expired JWT |
+| 403 | Valid JWT but not permitted (non-creator mutation) |
+| 404 | Room not found |
+| 409 | Name uniqueness conflict |
+| 422 | Business rule violation (room cap) |
 | 500 | Internal Server Error |
+
+---
+
+## entry-auth-service Contract Changes
+
+`entry-auth-service` is updated to issue JWTs. The following additions apply:
+
+### Updated: POST /auth/join — 200 OK response
+
+```json
+{
+  "username": "alice",
+  "token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+(`token` field is new; JWT expires in `JWT_EXPIRY_SECONDS` seconds, default 900)
+
+### New: GET /auth/refresh-token
+
+Validates the current session cookie and issues a fresh JWT.
+
+**Request**: No body. Requires valid `SESSION` cookie.
+
+**200 OK**:
+```json
+{ "token": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+**401 Unauthorized** (no valid session):
+```json
+{ "error": "Authentication required" }
+```
 
 ---
 
 ## Security Notes
 
-- Creator identity is read from the **authenticated session** (`PRINCIPAL_NAME`),
-  never from the request body or URL parameters
-- The `creatorUsername` field in responses is informational only and is not used
-  for authorization decisions
-- All mutation operations (POST, PUT, DELETE) are logged to `room_audit_log`
-- `rooms-service` has no published port; only accessible via gateway on `privchat-net`
+- `creatorUsername` in responses is informational; authorization uses JWT `sub` only
+- All mutation endpoints (POST, PUT, DELETE) write to `room_audit_log`
+- `rooms-service` creates no server-side sessions (`SessionCreationPolicy.STATELESS`)
+- `JWT_SECRET` must be ≥ 32 bytes and must be identical in both services
+- `rooms-service` has no published Docker port — accessible only via `privchat-net`
 
 ---
 
-## Gateway Routing Configuration
+## Gateway Routing
 
-Add to `application.yml` in `api-gateway`:
-
+`application.yml` in `api-gateway`:
 ```yaml
 services:
   auth:
@@ -329,5 +289,5 @@ services:
     url: ${ROOMS_SERVICE_URL:http://rooms-service:8080}
 ```
 
-Add `RoomsProxyController` mapping `@RequestMapping("/rooms/**")` to `rooms-service`
-(mirrors `AuthProxyController` with `services.rooms.url` as the base URL).
+`RoomsProxyController` maps `@RequestMapping("/rooms/**")` and forwards to
+`services.rooms.url` — mirrors `AuthProxyController` exactly.
