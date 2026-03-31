@@ -279,7 +279,7 @@ Validates the current session cookie and issues a fresh JWT.
 
 **200 OK**:
 ```json
-{ "token": "eyJhbGciOiJIUzI1NiJ9..." }
+{ "token": "eyJhbGciOiJSUzI1NiJ9..." }
 ```
 
 **401 Unauthorized** (no valid session):

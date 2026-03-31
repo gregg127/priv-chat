@@ -33,15 +33,21 @@
 - [ ] T008 Configure jOOQ DDL-based code generation in `implementation/services/rooms-service/build.gradle` using `jooq-meta-extensions`: point to V1–V3 migration SQL files, output package `com.privchat.rooms.jooq`, dialect POSTGRES — mirror `entry-auth-service` jOOQ codegen config exactly
 - [ ] T009 [P] Create Java record models: `implementation/services/rooms-service/src/main/java/com/privchat/rooms/model/Room.java`, `UserRoomStats.java`, `RoomAuditLog.java` — fields match data-model.md column definitions
 - [ ] T010 Add JJWT 0.12.6 dependencies to `implementation/services/entry-auth-service/build.gradle`: `implementation("io.jsonwebtoken:jjwt-api:0.12.6")`, `runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")`, `runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")`
+- [ ] T010a Write failing unit test `implementation/services/entry-auth-service/src/test/java/com/privchat/auth/service/JwtServiceTest.java`: tests must cover `generateToken(username)` returning a non-null RS256 JWT, `getPublicKey()` returning non-null RSAPublicKey, and ephemeral key pair generation when env vars are blank. Run test — must fail (class doesn't exist yet).
 - [ ] T011 Create `implementation/services/entry-auth-service/src/main/java/com/privchat/auth/service/JwtService.java`: `@Service`; loads `JWT_PRIVATE_KEY` (base64 PKCS#8 PEM) + `JWT_PUBLIC_KEY` (base64 X.509 PEM) from env — if blank, generates ephemeral RSA 2048 key pair at startup; `generateToken(String username)` signs RS256 JWT with `sub=username`, `iat=now`, `exp=now+JWT_EXPIRY_SECONDS`; `getPublicKey()` returns `RSAPublicKey`
+- [ ] T011rev **Security Review Gate — JwtService (entry-auth)**: second-developer reviews `JwtService.java` before T012 proceeds. Checklist: RSA key pair loaded correctly, private key not logged, ephemeral mode documented, JWT expiry enforced, no hardcoded secrets. Sign off in PR review before merging T011.
 - [ ] T012 Create `implementation/services/entry-auth-service/src/main/java/com/privchat/auth/controller/JwksController.java`: `@RestController`; `GET /auth/jwks` returns `{ "keys": [{ "kty":"RSA","use":"sig","alg":"RS256","kid":"priv-chat-1","n":"<base64url modulus>","e":"AQAB" }] }` using `JwtService.getPublicKey()`; endpoint must be unauthenticated
 - [ ] T013 Update `implementation/services/entry-auth-service/src/main/java/com/privchat/auth/controller/dto/JoinResponse.java` to `record JoinResponse(String username, String token)`; update `implementation/services/entry-auth-service/src/main/java/com/privchat/auth/service/AuthService.java` to call `JwtService.generateToken(username)` and include the token in the returned `JoinResponse`
 - [ ] T014 Add `GET /auth/refresh-token` to `implementation/services/entry-auth-service/src/main/java/com/privchat/auth/controller/AuthController.java`: requires valid session (use existing session validation); returns `{ "token": "..." }` with a fresh JWT via `JwtService.generateToken(username)`; returns 401 if no valid session
 - [ ] T015 Update `implementation/services/entry-auth-service` Spring Security config to permit `GET /auth/jwks` without authentication (add `requestMatchers("/auth/jwks").permitAll()` before existing rules)
+- [ ] T015a Write failing unit test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/security/JwksClientTest.java`: mock JWKS JSON response, assert `getPublicKey()` returns a valid RSAPublicKey with correct modulus/exponent. Run test — must fail.
 - [ ] T016 Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/security/JwksClient.java`: `@Component`; at startup (via constructor or `@PostConstruct`), calls `GET {ENTRY_AUTH_SERVICE_URL}/auth/jwks` using `RestClient`, parses JWKS JSON, reconstructs `RSAPublicKey` from `n` and `e` fields using `RSAPublicKeySpec`; caches key in volatile field; exposes `getPublicKey()`
+- [ ] T016a Write failing unit test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/security/JwtServiceTest.java`: test valid RS256 token returns username; expired token throws; tampered signature throws; missing `sub` throws. Run test — must fail.
 - [ ] T017 Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/security/JwtService.java`: `@Service`; `validateToken(String token)` — parses JWT using JJWT, verifies RS256 signature with `JwksClient.getPublicKey()`, checks expiry; returns username (`sub` claim) on success; throws on invalid/expired token
+- [ ] T017a Write failing unit test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/security/JwtAuthFilterTest.java`: test missing Authorization header → 401; malformed token → 401; valid token → SecurityContext populated with username. Run test — must fail.
 - [ ] T018 Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/security/JwtAuthFilter.java`: extends `OncePerRequestFilter`; extracts `Authorization: Bearer <token>` header; calls `JwtService.validateToken()`; on success sets `UsernamePasswordAuthenticationToken` in `SecurityContextHolder`; on failure writes 401 JSON response `{ "error": "Authentication required" }`
 - [ ] T019 Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/security/SecurityConfig.java`: `@Configuration @EnableWebSecurity`; `SessionCreationPolicy.STATELESS`; permit `/actuator/health`, authenticate all other requests; `addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)`; disable CSRF, formLogin, httpBasic
+- [ ] T019rev **Security Review Gate — rooms-service auth stack (T016–T019)**: second-developer reviews `JwksClient.java`, `JwtService.java`, `JwtAuthFilter.java`, `SecurityConfig.java` before T020 proceeds. Checklist: RSAPublicKey reconstruction correct, no timing oracle in JWT validation, stateless session confirmed, all endpoints authenticated except `/actuator/health`. Sign off in PR review.
 - [ ] T020 Create `implementation/api-gateway/src/main/java/com/privchat/gateway/proxy/RoomsProxyController.java`: `@RestController @RequestMapping("/rooms/**")`; mirrors `AuthProxyController` exactly — injects `RestClient` configured with `${services.rooms.url}`; forwards all headers except `Host` and `Content-Length` including `Authorization: Bearer`; proxies all HTTP methods
 - [ ] T021 Update `implementation/api-gateway/src/main/resources/application.yml` to add `services.rooms.url: ${ROOMS_SERVICE_URL:http://rooms-service:8080}` alongside existing `services.auth.url`
 
@@ -53,6 +59,7 @@
 **Independent test**: Log in → see room list with cards showing name/creator/timestamp/count → click Join → confirm navigation to room view.
 
 - [ ] T022 [P] [US1] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/dto/RoomResponse.java`: Java record with fields `id`, `name`, `creatorUsername`, `createdAt` (ISO-8601 string), `activeMemberCount`; maps from `Room` model
+- [ ] T022a [P] [US1] Write failing integration test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/repository/RoomRepositoryTest.java` (Testcontainers + postgres-rooms): assert `findAll()` returns rooms ordered newest-first; `findById()` returns correct room; missing ID returns empty Optional. Run test — must fail.
 - [ ] T023 [P] [US1] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/repository/RoomRepository.java`: `@Repository`; `findAll()` returns all rooms ordered by `created_at DESC` using jOOQ DSL; `findById(Long id)` returns `Optional<Room>`; all queries use jOOQ parameterized DSL (no raw SQL string concatenation)
 - [ ] T024 [US1] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java` with `GET /rooms` (returns `List<RoomResponse>`, 200 OK, `[]` when empty) and `GET /rooms/{id}` (returns `RoomResponse` or 404 JSON error); inject `RoomRepository`; map `Room` → `RoomResponse`
 - [ ] T025 [US1] Create `implementation/frontend/src/lib/authContext.tsx`: React context + provider storing JWT token string in memory (React state — NOT localStorage); expose `{ token, setToken }` via `useAuth()` hook; wrap app layout so all pages can access it
@@ -70,6 +77,7 @@
 
 - [ ] T030 [P] [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/dto/CreateRoomRequest.java`: Java record with optional `name` field (may be null); and `UpdateRoomRequest.java` with required `name` field
 - [ ] T031 [P] [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/repository/AuditLogRepository.java`: `@Repository`; `insert(String eventType, Long roomId, String roomName, String actorUsername)` writes one append-only row to `room_audit_log` using jOOQ DSL
+- [ ] T031a [US2] Write failing unit test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/service/RoomServiceTest.java`: test cap enforcement (`active_rooms_count == 10` → `RoomCapException`); naming sequence (`rooms_created_count = 2` → name `alice-room-3`); custom name uniqueness conflict → 409; successful creation → correct Room returned. Run test — must fail.
 - [ ] T032 [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java`: `createRoom(String username, @Nullable String customName)` — within a single DB transaction: (1) upsert `user_room_stats` row for username; (2) check `active_rooms_count < 10`, throw `RoomCapException` if not; (3) resolve name: use `customName` if provided (check uniqueness → 409), else generate `{username}-room-{rooms_created_count+1}` (increment until unique); (4) increment both counters in `user_room_stats`; (5) insert into `rooms`; (6) write `CREATE_ROOM` audit log entry; return created `Room`
 - [ ] T033 [US2] Add `POST /rooms` to `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java`: accepts `CreateRoomRequest`, calls `RoomService.createRoom()`, returns 201 with `RoomResponse`; handle `RoomCapException` → 422; handle name conflict → 409; handle validation → 400
 - [ ] T034 [US2] Add "Create Room" button to `implementation/frontend/src/app/portal/rooms/page.tsx`: calls `createRoom()` from `roomsApi.ts`; on 201 success, navigates user to `/portal/rooms/[id]` of the new room; on 422 response, stores cap-reached state in component state (does not throw)
@@ -150,8 +158,7 @@ T040 depends on T038 (needs PUT endpoint live), T028 (needs RoomCard)
 T041 depends on T039 (needs DELETE endpoint live), T028 (needs RoomCard)
 T042 depends on T031 (needs AuditLogRepository)
 T043 depends on T025 (needs AuthContext)
-T044 depends on T029 (needs rooms page)T041 depends on T025
-T042 depends on T029
+T044 depends on T029 (needs rooms page)
 ```
 
 ## Parallel Execution Examples
@@ -178,6 +185,6 @@ T042 depends on T029
 
 ---
 
-**Total tasks**: 44
-**Tasks per phase**: Setup 4 | Foundational 17 | US1 8 | US2 6 | US3 2 | US4 4 | Polish 3
+**Total tasks**: 54 (44 implementation + 7 TDD test tasks + 2 security review gates + 1 dependency audit)
+**Tasks per phase**: Setup 4 | Foundational 27 | US1 9 | US2 7 | US3 2 | US4 4 | Polish 3
 **Parallel opportunities**: 20 tasks marked [P]

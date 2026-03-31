@@ -187,7 +187,8 @@ return an error.
 - **FR-006**: Clicking "Create Room" MUST create a new public room with a
   default name following the pattern `{username}-room-{n}`, where `n` is the
   next available sequential number for rooms created by that user (starting
-  at 1).
+  at 1). The API additionally accepts an optional custom `name` field for
+  future extensibility; the v1 UI does not expose this option.
 - **FR-007**: After creating a room, the user MUST be automatically navigated
   into the newly created room.
 - **FR-008**: When no rooms exist, the Room Gateway MUST display an empty-state
