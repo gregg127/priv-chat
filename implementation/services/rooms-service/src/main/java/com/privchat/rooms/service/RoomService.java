@@ -3,6 +3,7 @@ package com.privchat.rooms.service;
 import com.privchat.rooms.model.Room;
 import com.privchat.rooms.model.UserRoomStats;
 import com.privchat.rooms.repository.AuditLogRepository;
+import com.privchat.rooms.repository.RoomMemberRepository;
 import com.privchat.rooms.repository.RoomRepository;
 import com.privchat.rooms.repository.UserRoomStatsRepository;
 import org.springframework.stereotype.Service;
@@ -22,13 +23,16 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final AuditLogRepository auditLogRepository;
     private final UserRoomStatsRepository statsRepository;
+    private final RoomMemberRepository memberRepository;
 
     public RoomService(RoomRepository roomRepository,
                        AuditLogRepository auditLogRepository,
-                       UserRoomStatsRepository statsRepository) {
+                       UserRoomStatsRepository statsRepository,
+                       RoomMemberRepository memberRepository) {
         this.roomRepository = roomRepository;
         this.auditLogRepository = auditLogRepository;
         this.statsRepository = statsRepository;
+        this.memberRepository = memberRepository;
     }
 
     /**
@@ -89,6 +93,9 @@ public class RoomService {
         // 5. Insert room
         Room created = roomRepository.insert(resolvedName, username);
 
+        // 5b. Add creator as first member (join_seq = 0: can see all messages)
+        memberRepository.insert(created.id(), username, username, 0L);
+
         // 6. Audit log
         auditLogRepository.insert("CREATE_ROOM", created.id(), created.name(), username);
 
@@ -113,9 +120,9 @@ public class RoomService {
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found"));
 
-        if (!room.creatorUsername().equals(actorUsername)) {
+        if (!room.ownerUsername().equals(actorUsername)) {
             auditLogRepository.insert("UNAUTHORIZED_ATTEMPT", id, room.name(), actorUsername);
-            throw new RoomForbiddenException("Only the room creator can update this room");
+            throw new RoomForbiddenException("Only the room owner can update this room");
         }
 
         if (newName == null || newName.isBlank()) {
@@ -154,9 +161,9 @@ public class RoomService {
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new RoomNotFoundException("Room not found"));
 
-        if (!room.creatorUsername().equals(actorUsername)) {
+        if (!room.ownerUsername().equals(actorUsername)) {
             auditLogRepository.insert("UNAUTHORIZED_ATTEMPT", id, room.name(), actorUsername);
-            throw new RoomForbiddenException("Only the room creator can delete this room");
+            throw new RoomForbiddenException("Only the room owner can delete this room");
         }
 
         roomRepository.deleteById(id);

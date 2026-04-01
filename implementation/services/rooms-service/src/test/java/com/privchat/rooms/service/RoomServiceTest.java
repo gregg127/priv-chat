@@ -3,6 +3,7 @@ package com.privchat.rooms.service;
 import com.privchat.rooms.model.Room;
 import com.privchat.rooms.model.UserRoomStats;
 import com.privchat.rooms.repository.AuditLogRepository;
+import com.privchat.rooms.repository.RoomMemberRepository;
 import com.privchat.rooms.repository.RoomRepository;
 import com.privchat.rooms.repository.UserRoomStatsRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +26,7 @@ class RoomServiceTest {
     private RoomRepository roomRepository;
     private AuditLogRepository auditLogRepository;
     private UserRoomStatsRepository statsRepository;
+    private RoomMemberRepository memberRepository;
     private RoomService roomService;
 
     @BeforeEach
@@ -32,7 +34,8 @@ class RoomServiceTest {
         roomRepository = mock(RoomRepository.class);
         auditLogRepository = mock(AuditLogRepository.class);
         statsRepository = mock(UserRoomStatsRepository.class);
-        roomService = new RoomService(roomRepository, auditLogRepository, statsRepository);
+        memberRepository = mock(RoomMemberRepository.class);
+        roomService = new RoomService(roomRepository, auditLogRepository, statsRepository, memberRepository);
     }
 
     // ─── Cap enforcement ─────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ class RoomServiceTest {
         when(statsRepository.findByUsername("alice")).thenReturn(Optional.of(stats));
         when(roomRepository.existsByName("alice-room-3")).thenReturn(false);
 
-        Room created = new Room(1L, "alice-room-3", "alice", OffsetDateTime.now(), 0);
+        Room created = new Room(1L, "alice-room-3", "alice", "alice", OffsetDateTime.now(), 0, 0L);
         when(roomRepository.insert("alice-room-3", "alice")).thenReturn(created);
 
         Room result = roomService.createRoom("alice", null);
@@ -68,7 +71,7 @@ class RoomServiceTest {
         when(statsRepository.findByUsername("alice")).thenReturn(Optional.empty());
         when(roomRepository.existsByName("alice-room-1")).thenReturn(false);
 
-        Room created = new Room(1L, "alice-room-1", "alice", OffsetDateTime.now(), 0);
+        Room created = new Room(1L, "alice-room-1", "alice", "alice", OffsetDateTime.now(), 0, 0L);
         when(roomRepository.insert("alice-room-1", "alice")).thenReturn(created);
 
         Room result = roomService.createRoom("alice", null);
@@ -93,7 +96,7 @@ class RoomServiceTest {
         when(statsRepository.findByUsername("alice")).thenReturn(Optional.of(stats));
         when(roomRepository.existsByName("my-room")).thenReturn(false);
 
-        Room created = new Room(1L, "my-room", "alice", OffsetDateTime.now(), 0);
+        Room created = new Room(1L, "my-room", "alice", "alice", OffsetDateTime.now(), 0, 0L);
         when(roomRepository.insert("my-room", "alice")).thenReturn(created);
 
         Room result = roomService.createRoom("alice", "my-room");
@@ -107,7 +110,7 @@ class RoomServiceTest {
         when(statsRepository.findByUsername("alice")).thenReturn(Optional.empty());
         when(roomRepository.existsByName("alice-room-1")).thenReturn(false);
 
-        Room created = new Room(1L, "alice-room-1", "alice", OffsetDateTime.now(), 0);
+        Room created = new Room(1L, "alice-room-1", "alice", "alice", OffsetDateTime.now(), 0, 0L);
         when(roomRepository.insert("alice-room-1", "alice")).thenReturn(created);
 
         roomService.createRoom("alice", null);

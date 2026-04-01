@@ -24,18 +24,28 @@ public class RoomRepository {
 
     /**
      * Returns all rooms ordered by creation time (newest first).
+     * @deprecated Use {@link #findAllByUsername(String)} for invite-only access control.
      */
+    @Deprecated
     public List<Room> findAll() {
         return dsl.selectFrom(ROOMS)
                 .orderBy(ROOMS.CREATED_AT.desc())
                 .fetch()
-                .map(r -> new Room(
-                        r.getId(),
-                        r.getName(),
-                        r.getCreatorUsername(),
-                        r.getCreatedAt(),
-                        r.getActiveMemberCount()
-                ));
+                .map(this::toModel);
+    }
+
+    /**
+     * Returns rooms the given user is a member of (invite-only access model).
+     */
+    public List<Room> findAllByUsername(String username) {
+        return dsl.select(ROOMS.fields())
+                .from(ROOMS)
+                .join(com.privchat.rooms.jooq.Tables.ROOM_MEMBERS)
+                    .on(ROOMS.ID.eq(com.privchat.rooms.jooq.Tables.ROOM_MEMBERS.ROOM_ID))
+                .where(com.privchat.rooms.jooq.Tables.ROOM_MEMBERS.USERNAME.eq(username))
+                .orderBy(ROOMS.CREATED_AT.desc())
+                .fetch()
+                .map(r -> toModel((com.privchat.rooms.jooq.tables.records.RoomsRecord) r.into(ROOMS)));
     }
 
     /**
@@ -45,13 +55,7 @@ public class RoomRepository {
         return dsl.selectFrom(ROOMS)
                 .where(ROOMS.ID.eq(id))
                 .fetchOptional()
-                .map(r -> new Room(
-                        r.getId(),
-                        r.getName(),
-                        r.getCreatorUsername(),
-                        r.getCreatedAt(),
-                        r.getActiveMemberCount()
-                ));
+                .map(this::toModel);
     }
 
     /**
@@ -61,15 +65,10 @@ public class RoomRepository {
         var record = dsl.insertInto(ROOMS)
                 .set(ROOMS.NAME, name)
                 .set(ROOMS.CREATOR_USERNAME, creatorUsername)
+                .set(ROOMS.OWNER_USERNAME, creatorUsername)
                 .returning()
                 .fetchOne();
-        return new Room(
-                record.getId(),
-                record.getName(),
-                record.getCreatorUsername(),
-                record.getCreatedAt(),
-                record.getActiveMemberCount()
-        );
+        return toModel(record);
     }
 
     /**
@@ -82,13 +81,19 @@ public class RoomRepository {
                 .returning()
                 .fetchOne();
         if (record == null) return Optional.empty();
-        return Optional.of(new Room(
-                record.getId(),
-                record.getName(),
-                record.getCreatorUsername(),
-                record.getCreatedAt(),
-                record.getActiveMemberCount()
-        ));
+        return Optional.of(toModel(record));
+    }
+
+    /**
+     * Transfers ownership to a new username. Returns the updated room.
+     */
+    public Optional<Room> transferOwnership(Long id, String newOwnerUsername) {
+        var record = dsl.update(ROOMS)
+                .set(ROOMS.OWNER_USERNAME, newOwnerUsername)
+                .where(ROOMS.ID.eq(id))
+                .returning()
+                .fetchOne();
+        return Optional.ofNullable(record).map(this::toModel);
     }
 
     /**
@@ -113,5 +118,11 @@ public class RoomRepository {
      */
     public void deleteAll() {
         dsl.deleteFrom(ROOMS).execute();
+    }
+
+    private Room toModel(com.privchat.rooms.jooq.tables.records.RoomsRecord r) {
+        return new Room(r.getId(), r.getName(), r.getCreatorUsername(),
+                r.getOwnerUsername(), r.getCreatedAt(),
+                r.getActiveMemberCount(), r.getMessageSeq() != null ? r.getMessageSeq() : 0L);
     }
 }

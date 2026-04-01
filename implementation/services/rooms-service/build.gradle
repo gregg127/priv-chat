@@ -39,6 +39,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator:4.0.4")
     implementation("org.springframework.boot:spring-boot-starter-jooq:4.0.4")
     implementation("org.springframework.boot:spring-boot-starter-security:4.0.4")
+    implementation("org.springframework.boot:spring-boot-starter-websocket:4.0.4")
     implementation("org.flywaydb:flyway-core:11.20.3")
     implementation("org.flywaydb:flyway-database-postgresql:11.20.3")
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")
