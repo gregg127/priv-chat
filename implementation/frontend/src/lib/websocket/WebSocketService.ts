@@ -37,8 +37,12 @@ export interface WsChatMessage extends WsInboundMessage {
   senderUsername: string;
   /** Base64-encoded ciphertext */
   ciphertext: string;
+  ciphertextB64?: string; // alias used when building optimistic entries
   clientMessageId: string;
   serverTimestamp: string;
+  timestamp?: string;
+  /** True for locally-injected optimistic entries that haven't been confirmed by the server yet */
+  optimistic?: boolean;
 }
 
 type MessageHandler = (msg: WsInboundMessage) => void;
@@ -60,9 +64,18 @@ export class WebSocketService {
 
   private connect() {
     if (this.closed) return;
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const host = window.location.host;
-    this.ws = new WebSocket(`${protocol}://${host}/ws`);
+
+    // In production everything runs behind a single reverse-proxy so we can
+    // use the same origin.  In development the gateway is on :8080 while
+    // Next.js is on :3000, so NEXT_PUBLIC_WS_URL overrides the default.
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL
+      ?? (() => {
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const host = window.location.host;
+        return `${protocol}://${host}/ws`;
+      })();
+
+    this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;

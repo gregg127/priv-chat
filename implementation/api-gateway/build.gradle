@@ -19,6 +19,7 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web:4.0.4")
+    implementation("org.springframework.boot:spring-boot-starter-websocket:4.0.4")
     implementation("org.springframework.boot:spring-boot-starter-actuator:4.0.4")
     testImplementation("org.springframework.boot:spring-boot-starter-test:4.0.4")
 }

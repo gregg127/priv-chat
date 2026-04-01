@@ -88,7 +88,19 @@ export default function RoomPage() {
     ws.on('message', (msg) => {
       const chatMsg = msg as WsChatMessage;
       if (chatMsg.type === 'message' && chatMsg.roomId === roomId) {
-        setLiveMessages(prev => [...prev, chatMsg]);
+        setLiveMessages(prev => {
+          // Replace a pending optimistic entry if clientMessageId matches,
+          // otherwise just append (message from another participant).
+          const idx = chatMsg.clientMessageId
+            ? prev.findIndex(m => m.clientMessageId === chatMsg.clientMessageId && m.optimistic)
+            : -1;
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = chatMsg;
+            return next;
+          }
+          return [...prev, chatMsg];
+        });
       }
     });
 
@@ -100,9 +112,26 @@ export default function RoomPage() {
 
   function handleSend(text: string) {
     const ws = wsRef.current;
-    if (!ws) return;
+    if (!ws || !username) return;
     const ciphertextB64 = encryptMessage(text, roomId);
     const clientMessageId = generateClientMessageId();
+
+    // Optimistically render the message immediately without waiting for server fanout.
+    // The server echoes back the confirmed message; on receipt we replace this entry
+    // by its clientMessageId so there are no duplicates.
+    const optimistic: WsChatMessage = {
+      type: 'message',
+      roomId,
+      id: undefined as unknown as number,
+      seq: undefined as unknown as number,
+      senderUsername: username,
+      ciphertext: ciphertextB64,
+      clientMessageId,
+      serverTimestamp: new Date().toISOString(),
+      optimistic: true,
+    };
+    setLiveMessages(prev => [...prev, optimistic]);
+
     ws.sendMessage(roomId, ciphertextB64, clientMessageId);
   }
 
