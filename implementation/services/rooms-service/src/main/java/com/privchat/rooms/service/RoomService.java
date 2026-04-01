@@ -65,6 +65,10 @@ public class RoomService {
         // 3. Resolve name
         String resolvedName;
         if (customName != null && !customName.isBlank()) {
+            customName = customName.trim();
+            if (customName.length() > 100) {
+                throw new RoomValidationException("Room name must not exceed 100 characters");
+            }
             if (roomRepository.existsByName(customName)) {
                 throw new RoomNameConflictException("Room name already taken");
             }
@@ -117,11 +121,12 @@ public class RoomService {
         if (newName == null || newName.isBlank()) {
             throw new RoomValidationException("Room name is required");
         }
+        newName = newName.trim();
         if (newName.length() > 100) {
             throw new RoomValidationException("Room name must not exceed 100 characters");
         }
 
-        if (roomRepository.existsByName(newName)) {
+        if (roomRepository.existsByName(newName) && !newName.equals(room.name())) {
             throw new RoomNameConflictException("Room name already taken");
         }
 
