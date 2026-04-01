@@ -17,6 +17,8 @@
 - Q: What happens to messages sent during a member's disconnection? → A: All messages sent during the disconnection are automatically delivered when the member reconnects.
 - Q: Can newly invited members access message history from before they joined? → A: No — new members see only messages sent after they were invited; pre-invite history is not accessible to them.
 - Q: What happens to the room when the owner's account is deleted? → A: Ownership automatically transfers to the longest-standing member; the room and all its messages remain accessible.
+- Q: How does the participant list behave when the same user connects from multiple devices? → A: One entry per user — the user appears once in the member list, shown as active if any of their devices is currently connected; device count is not exposed to other members.
+- Q: Can the room owner delete the entire room? → A: Out of scope for this version — room deletion is not supported; rooms persist indefinitely.
 
 > ⚠️ **Impact on feature 002 (`002-room-gateway`)**: That spec describes "public rooms" visible to all users. The invite-only model changes this — the room gateway should show only rooms the user has been invited to, not a global public list. Feature 002 must be re-specified or amended before implementation.
 
@@ -98,7 +100,7 @@ The room owner can invite other users to join the room by typing their username 
 ### Edge Cases
 
 - What happens when a user tries to access a room they are not a member of?
-- How does the participant list behave when the same user connects from multiple devices?
+- How does the participant list behave when the same user connects from multiple devices? → The user appears once in the list, shown as active if any device is connected; device count is not exposed to other members (see FR-003)
 - What happens when a user sends an empty message? → The system prevents submission and displays a validation error; empty or whitespace-only messages are rejected before sending (see FR-020)
 - How does the chat handle a very long message that exceeds typical display width?
 - What happens when a room has only one participant (the owner themselves, with no invited members yet)?
@@ -113,7 +115,7 @@ The room owner can invite other users to join the room by typing their username 
 
 - **FR-001**: System MUST display the room's name on the room page
 - **FR-002**: System MUST display a list of all members of the room
-- **FR-003**: System MUST update the member list in real time when members become active or inactive
+- **FR-003**: System MUST update the member list in real time when members become active or inactive; each user MUST appear at most once in the list regardless of how many devices they are connected from; a user is shown as active if any of their devices is currently connected; device count MUST NOT be exposed to other room members
 - **FR-004**: Users MUST be able to type and submit a message from the room page
 - **FR-005**: Submitted messages MUST be delivered to all current room members in real time
 - **FR-006**: Messages MUST be end-to-end encrypted — the server stores and relays ciphertext only and MUST NOT be able to read message content; only room members with the appropriate keys can decrypt messages
@@ -139,7 +141,7 @@ The room owner can invite other users to join the room by typing their username 
 - **Member**: A user who has been invited to a room; can view and send messages within that room
 - **Invite**: An action by the room owner that grants a specific user access to the room by username lookup; records the invite timestamp which acts as the history visibility boundary for that member
 - **Message**: A text communication sent by a member within a room; end-to-end encrypted — stored and relayed as ciphertext; only room members can decrypt; records sender identity, ciphertext content, and timestamp; persisted indefinitely until explicitly deleted by the room owner
-- **Room Session**: Represents a member's active presence in a room at a given time; used to reflect real-time activity in the participant list
+- **Room Session**: Represents a user's active presence in a room; a user is considered active if at least one of their connected devices is subscribed to the room; each user appears at most once in the participant list regardless of device count
 
 ## Success Criteria *(mandatory)*
 
@@ -165,4 +167,5 @@ The room owner can invite other users to join the room by typing their username 
 - Messages are text-only for this version; file attachments, images, and reactions are out of scope
 - The number of members per room is assumed to be reasonable for a private chat context (e.g., up to ~50 people)
 - Notifications for new messages when the user is not on the room page are out of scope for this feature
+- Room deletion is out of scope for this version — rooms persist indefinitely; the owner can only delete individual messages (FR-017)
 - The Room Gateway (feature 002) must be updated separately to reflect that users see only their invited rooms, not all public rooms
