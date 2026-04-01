@@ -38,10 +38,11 @@
 - [ ] T010 [P] Implement privacy-safe structured logging service (metadata-only, fields per `research.md` Decision 8: no user IDs, no ciphertext, no keys) in `backend/src/lib/logger.ts`
 - [ ] T011 [P] Implement token-bucket rate limiter: per-user (10 msg/s), per-room (100 msg/s), per-user-per-room (5 msg/s) in `backend/src/lib/rateLimiter.ts`
 - [ ] T012 [P] Initialize `@signalapp/libsignal-client` WASM in frontend: load module, generate identity key pair on first use, store in IndexedDB in `frontend/src/services/signal/signalInit.ts`
-- [ ] T013 [P] Implement IndexedDB keystore service: stores `identity`, `signedPreKeys`, `preKeys`, `sessions`, `senderKeys`, `roomCursors` — schema per `data-model.md` Client-Side State — in `frontend/src/services/keystore/KeystoreService.ts`
+- [ ] T013b Implement IndexedDB encryption layer: derive a 256-bit AES-GCM wrapping key from user credential via WebCrypto PBKDF2; expose `encrypt(data)` / `decrypt(data)` utilities — in `frontend/src/services/keystore/KeystoreEncryption.ts`. (Constitution Security: private keys MUST use platform-appropriate secure storage with encryption at rest.)
+- [ ] T013 Implement IndexedDB keystore service: uses `KeystoreEncryption` for all reads/writes; stores `identity`, `signedPreKeys`, `preKeys`, `sessions`, `senderKeys`, `roomCursors` — schema per `data-model.md` Client-Side State — in `frontend/src/services/keystore/KeystoreService.ts` (depends on T013b)
 - [ ] T014 [P] Implement frontend WebSocket service base: connect, auth handshake, reconnect with exponential backoff, event emitter for incoming frames in `frontend/src/services/websocket/WebSocketService.ts`
 
-**Checkpoint**: DB migrations run successfully; WebSocket server boots and rejects unauthenticated connections; frontend keystore initializes without error.
+**Checkpoint**: DB migrations run successfully; WebSocket server boots and rejects unauthenticated connections; frontend keystore initializes without error; all IndexedDB key material is AES-GCM encrypted at rest.
 
 ---
 
@@ -50,6 +51,12 @@
 **Goal**: A member navigates to the room page and sees the room name and live member list. Non-members are blocked.
 
 **Independent Test**: Navigate to a room URL as an invited member → room name and all members displayed. Navigate as a non-member → access denied message shown.
+
+### Tests for User Story 1 ⚠️ Write and confirm FAILING before any implementation
+
+- [ ] T027 [US1] Write Playwright E2E test (must FAIL before T015 begins): member navigates to room, sees room name and member list; non-member gets access denied in `frontend/tests/e2e/room-details.spec.ts`
+
+### Implementation for User Story 1
 
 - [ ] T015 [P] [US1] Implement `Room` TypeScript model and DB query helpers (find by id, get with members) in `backend/src/models/Room.ts`
 - [ ] T016 [P] [US1] Implement `RoomMember` TypeScript model and DB query helpers (list by room, get by userId+roomId, check membership) in `backend/src/models/RoomMember.ts`
@@ -63,7 +70,6 @@
 - [ ] T024 [US1] Implement frontend `RoomService`: `fetchRoomDetails(roomId)` → `GET /api/v1/rooms/:roomId`, populates room store in `frontend/src/services/room/RoomService.ts`
 - [ ] T025 [US1] Implement `RoomPage` layout: mounts `RoomHeader` + `MemberList`, calls `RoomService.fetchRoomDetails` on load, handles 403 with access-denied UI in `frontend/src/pages/room/RoomPage.tsx`
 - [ ] T026 [US1] Wire WebSocket `subscribe` on room page mount: handle `member_joined`, `member_left`, `presence_update` frames → update room store in `frontend/src/services/websocket/WebSocketService.ts`
-- [ ] T027 [US1] Playwright E2E test: member navigates to room, sees room name and member list; non-member gets access denied in `frontend/tests/e2e/room-details.spec.ts`
 
 **Checkpoint**: US1 independently functional — room page shows name and live member list. Non-member access blocked at both REST and WebSocket layers.
 
@@ -75,10 +81,20 @@
 
 **Independent Test**: Owner invites a valid username → invited user's room list gains the room within 10 seconds. Inviting non-existent username → error shown. Non-owner cannot see invite UI.
 
+### Prerequisite for User Story 4
+
+- [ ] T027b [US4] **Blocks T041**: Amend feature `002-room-gateway` so its room list endpoint filters to only rooms where the requesting user has a matching `room_members` row. Without this the E2E test assertion "invited user sees room in their list" cannot pass. Deliver: update `002-room-gateway` spec and implementation to join `rooms` against `room_members` on `GET /api/v1/rooms`.
+
+### Tests for User Story 4 ⚠️ Write and confirm FAILING before any implementation
+
+- [ ] T041 [US4] **Depends on T027b**. Write Playwright E2E test (must FAIL before T028 begins): owner invites member by username; invited user sees room in their list; non-owner cannot see invite panel; invalid username shows error in `frontend/tests/e2e/invite.spec.ts`
+
+### Implementation for User Story 4
+
 - [ ] T028 [P] [US4] Implement `KeyBundle` and `OneTimePreKey` TypeScript models and DB query helpers (upsert bundle, get bundle with OTP, delete used OTP) in `backend/src/models/KeyBundle.ts` and `backend/src/models/OneTimePreKey.ts`
 - [ ] T029 [US4] Implement `KeyServerService`: `getBundleForUser(userId)` (fetches public key bundle + consumes one OTP), `uploadBundle(userId, bundle)`, `replenishPrekeys(userId, keys)` in `backend/src/services/keyserver/KeyServerService.ts`
-- [ ] T030 [P] [US4] Implement `GET /api/v1/keys/bundles/:userId` endpoint per `contracts/rest-api.md` in `backend/src/api/keys.ts`
-- [ ] T031 [P] [US4] Implement `POST /api/v1/keys/bundles` and `POST /api/v1/keys/prekeys/replenish` endpoints per `contracts/rest-api.md` in `backend/src/api/keys.ts`
+- [ ] T030 [P] [US4] Implement `GET /api/v1/keys/bundles/:userId` endpoint per `contracts/rest-api.md` and `contracts/signal-key-server.md` in `backend/src/api/keys.ts`
+- [ ] T031 [US4] Implement `POST /api/v1/keys/bundles` and `POST /api/v1/keys/prekeys/replenish` endpoints per `contracts/rest-api.md` in `backend/src/api/keys.ts` (sequential after T030 — same file)
 - [ ] T032 [US4] Implement `InviteService`: `inviteUser(roomId, ownerUserId, targetUsername)` — validates owner, resolves username to userId (generic 404 on miss to prevent enumeration), checks not already member, creates `RoomMember` with `join_seq = MAX(seq)` captured atomically in `backend/src/services/invite/InviteService.ts`
 - [ ] T033 [US4] Implement `POST /api/v1/rooms/:roomId/invites` REST endpoint: calls `InviteService.inviteUser`, broadcasts `member_joined` to room WebSocket subscribers, returns `{ userId, roomId, joinedAt, joinSeq }` per `contracts/rest-api.md` in `backend/src/api/invites.ts`
 - [ ] T034 [US4] Implement frontend `SignalService` X3DH + SenderKey distribution for new member: `fetchPreKeyBundle(userId)`, `initSessionWithMember(userId, bundle)`, `createSenderKeyDistributionMessage(roomId)`, `sealForMember(userId, distributionMsg)` in `frontend/src/services/signal/SignalService.ts`
@@ -88,7 +104,6 @@
 - [ ] T038 [P] [US4] Implement `InvitePanel` component: username input field + submit button (owner only — hidden from non-owners), shows validation errors in `frontend/src/components/InvitePanel/InvitePanel.tsx`
 - [ ] T039 [US4] Implement frontend `InviteService`: `sendInvite(roomId, username)` → `POST /api/v1/rooms/:roomId/invites`, then triggers `SignalService` session init + SenderKey distribution for new member in `frontend/src/services/room/InviteService.ts`
 - [ ] T040 [US4] Mount `InvitePanel` in `RoomPage` (visible only when `userId === ownerId`); wire invite flow from form submit through `InviteService` in `frontend/src/pages/room/RoomPage.tsx`
-- [ ] T041 [US4] Playwright E2E test: owner invites member by username; invited user sees room in their list; non-owner cannot see invite panel; invalid username shows error in `frontend/tests/e2e/invite.spec.ts`
 
 **Checkpoint**: US4 independently functional — invite flow works end-to-end; invited user receives SenderKey and can decrypt room messages.
 
@@ -100,18 +115,23 @@
 
 **Independent Test**: Two members in the same room exchange messages — each sees the other's message appear without page reload, decrypted correctly. A non-member cannot receive or send messages.
 
+### Tests for User Story 2 ⚠️ Write and confirm FAILING before any implementation
+
+- [ ] T052 [US2] Write unit test (must FAIL before T049 begins): Signal Protocol encrypt/decrypt round-trip using known Signal test vectors in `frontend/tests/unit/signal.test.ts`
+- [ ] T053 [P] [US2] Write Playwright E2E test (must FAIL before T042 begins): two users in same room exchange messages — messages appear for both, non-member cannot access chat in `frontend/tests/e2e/chat.spec.ts`
+
+### Implementation for User Story 2
+
 - [ ] T042 [P] [US2] Implement `Message` TypeScript model and DB query helpers: insert with atomic seq assignment (`MAX(seq)+1` per room), fetch by `roomId + seq range + join_seq boundary`, soft-delete by id in `backend/src/models/Message.ts`
 - [ ] T043 [US2] Implement `MessageService`: `storeMessage(roomId, senderId, ciphertext, clientMessageId)` (deduplicates on `clientMessageId`, assigns seq, returns stored message), `deleteMessage(messageId, requestingUserId)` (owner-only, sets `deleted_at`, emits `message_deleted`) in `backend/src/services/message/MessageService.ts`
 - [ ] T044 [US2] Implement WebSocket `message` handler: validate membership + rate limit → call `MessageService.storeMessage` → send `message_ack` to sender → fan out `message_new` to all room subscribers in `backend/src/ws/handler.ts`
 - [ ] T045 [US2] Implement `FanoutService`: broadcast a frame to all clients subscribed to a given `roomId` (iterates `roomChannels[roomId]`), handles dead connections gracefully in `backend/src/services/websocket/FanoutService.ts`
 - [ ] T046 [US2] Implement `GET /api/v1/rooms/:roomId/messages` REST endpoint: paginated by `before_seq`, enforces `join_seq` boundary, returns ciphertext array per `contracts/rest-api.md` in `backend/src/api/messages.ts`
-- [ ] T047 [P] [US2] Implement `ChatArea` component: scrollable message list (ordered by seq), message input box, optimistic send (show message immediately, confirm on `message_ack`) in `frontend/src/components/ChatArea/ChatArea.tsx`
+- [ ] T047 [P] [US2] Implement `ChatArea` component: scrollable message list (ordered by seq), message input box, optimistic send (confirm on `message_ack`); each message MUST display sender's `displayName` (from `message_new` payload — resolved server-side) and formatted `serverTimestamp`; render empty-state ("No messages yet") when message store is empty (FR-007, FR-011) in `frontend/src/components/ChatArea/ChatArea.tsx`
 - [ ] T048 [US2] Implement message store: holds messages ordered by `seq`, deduplicates on `clientMessageId`, handles `message_deleted` removal in `frontend/src/store/messageStore.ts`
 - [ ] T049 [US2] Implement frontend `SignalService` SenderKey encrypt/decrypt: `encryptMessage(roomId, plaintext)` → base64 `SenderKeyMessage`, `decryptMessage(roomId, senderId, ciphertext)` → plaintext in `frontend/src/services/signal/SignalService.ts`
-- [ ] T050 [US2] Implement WebSocket `message` send (encrypt → send frame), `message_ack` handler (update store with seq + serverTimestamp), `message_new` handler (decrypt → add to store), `message_deleted` handler (remove from store) in `frontend/src/services/websocket/WebSocketService.ts`
+- [ ] T050 [US2] Implement WebSocket `message` send (encrypt → send frame), `message_ack` handler (update store with seq + serverTimestamp + senderDisplayName), `message_new` handler (decrypt → add to store; payload includes `senderDisplayName` resolved server-side from User entity), `message_deleted` handler (remove from store) in `frontend/src/services/websocket/WebSocketService.ts`
 - [ ] T051 [US2] Mount `ChatArea` in `RoomPage`; wire send action through `SignalService.encryptMessage` → WebSocket `message` frame in `frontend/src/pages/room/RoomPage.tsx`
-- [ ] T052 [US2] Unit test: Signal Protocol encrypt/decrypt round-trip using known Signal test vectors in `frontend/tests/unit/signal.test.ts`
-- [ ] T053 [US2] Playwright E2E test: two users in same room exchange messages — messages appear for both, non-member cannot access chat in `frontend/tests/e2e/chat.spec.ts`
 
 **Checkpoint**: US2 independently functional — real-time E2E-encrypted messaging works; server stores only ciphertext; non-members blocked.
 
@@ -123,13 +143,18 @@
 
 **Independent Test**: Send 10 messages, reload room page — all 10 messages appear decrypted in order. Disconnect, have another member send 3 messages, reconnect — 3 missed messages delivered automatically.
 
+### Tests for User Story 3 ⚠️ Write and confirm FAILING before any implementation
+
+- [ ] T059 [US3] Write Playwright E2E test (must FAIL before T054 begins): member reconnects after disconnect; receives all missed messages in correct seq order in `frontend/tests/e2e/reconnect.spec.ts`
+- [ ] T060 [P] [US3] Write Vitest integration test (must FAIL before T057 begins): history boundary enforced — new member cannot retrieve messages with seq < join_seq via REST or WebSocket catch-up in `backend/tests/integration/history-boundary.test.ts`
+
+### Implementation for User Story 3
+
 - [ ] T054 [US3] Implement frontend `HistoryService`: on room page open, fetch `GET /api/v1/rooms/:roomId/messages` (paged from `joinSeq`), decrypt each message via `SignalService`, populate message store in `frontend/src/services/room/HistoryService.ts`
 - [ ] T055 [US3] Update `ChatArea` to scroll to bottom on initial history load; support upward scroll-pagination (fetch older messages via `before_seq`) in `frontend/src/components/ChatArea/ChatArea.tsx`
 - [ ] T056 [US3] Persist `lastSeenSeq` and `joinSeq` per room in IndexedDB `roomCursors` store; update `lastSeenSeq` as messages are received in `frontend/src/services/keystore/KeystoreService.ts`
 - [ ] T057 [US3] Implement WebSocket catch-up in `backend/src/ws/handler.ts`: on `subscribe` with `lastSeenSeq`, query `MessageService` for missed messages, send `catchup_batch` frames (max 50 per batch) then `catchup_complete` frame per `contracts/websocket.md`
 - [ ] T058 [US3] Implement frontend reconnect catch-up: on WebSocket reconnect, re-subscribe with `lastSeenSeq` from IndexedDB; process `catchup_batch` (decrypt + insert into store in order) and `catchup_complete` in `frontend/src/services/websocket/WebSocketService.ts`
-- [ ] T059 [US3] Playwright E2E test: member reconnects after disconnect; receives all missed messages in correct seq order in `frontend/tests/e2e/reconnect.spec.ts`
-- [ ] T060 [US3] Vitest integration test: history boundary enforced — new member cannot retrieve messages with seq < join_seq via REST or WebSocket catch-up in `backend/tests/integration/history-boundary.test.ts`
 
 **Checkpoint**: US3 functional — history loads on page open; reconnect delivers missed messages; join_seq boundary enforced for new members.
 
@@ -155,7 +180,7 @@
 - **Phase 1 (Setup)**: No dependencies — start immediately
 - **Phase 2 (Foundational)**: Depends on Phase 1 — **BLOCKS all user story phases**
 - **Phase 3 (US1)**: Depends on Phase 2 — can start as soon as Foundation is done
-- **Phase 4 (US4)**: Depends on Phase 2 — can start in parallel with Phase 3
+- **Phase 4 (US4)**: Depends on Phase 2 — can start in parallel with Phase 3; T027b (feature 002 amendment) must complete before T041 can pass
 - **Phase 5 (US2)**: Depends on Phase 2 + Phase 4 (requires SenderKey distribution to be in place for full E2E crypto flow)
 - **Phase 6 (US3)**: Depends on Phase 5 (history requires messages to exist)
 - **Phase 7 (Polish)**: Depends on Phases 3–6 as applicable per task
@@ -208,7 +233,8 @@ T023 → T024 → T025 → T026 (frontend sequential)
 
 ```
 T028 (KeyBundle/OTP models) ← parallel with → T038 (InvitePanel component)
-T030 + T031 (key server endpoints) ← parallel
+T030 (key server GET) ← parallel with T028/T038
+T031 (key server POST/replenish) ← sequential after T030 (same file: keys.ts)
 T032 (InviteService) → T033 (invite endpoint) ← sequential
 T034 (SignalService X3DH) → T035 (WS distribution) ← sequential
 ```

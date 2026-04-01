@@ -6,6 +6,25 @@
 
 ## Entities
 
+### User
+
+Represents an authenticated user of the application. Created and managed by feature `001-auth`.
+
+> **Note**: This entity is owned by `001-auth`. Only the fields consumed by this feature are listed here for reference.
+
+| Field | Type | Constraints | Notes |
+|-------|------|-------------|-------|
+| `id` | UUID | PK | Immutable |
+| `username` | string | NOT NULL, UNIQUE, max 30 chars | Used for invite lookup (FR-012/FR-013) |
+| `display_name` | string | NOT NULL, max 50 chars | Shown in member list and message attribution (FR-007) |
+| `created_at` | timestamp | NOT NULL | Used for ownership transfer (`MIN(created_at)` among members) |
+
+**Indexes**: `username` (UNIQUE)
+
+**Note**: The `message_new` WebSocket frame MUST include `senderDisplayName` (resolved server-side from this entity) so clients can display sender identity without a separate lookup. See `contracts/websocket.md`.
+
+---
+
 ### Room
 
 Represents an invite-only private chat space. Persists indefinitely.
