@@ -18,7 +18,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build the application
+# NEXT_PUBLIC_* vars are embedded at build time, not runtime.
+# Pass NEXT_PUBLIC_WS_URL as a build arg to configure the WebSocket endpoint.
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_WS_URL=""
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 RUN npm run build;
 
 # Runner stage

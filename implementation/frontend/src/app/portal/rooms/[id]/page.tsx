@@ -113,10 +113,16 @@ export default function RoomPage() {
   function handleSend(text: string) {
     const ws = wsRef.current;
     if (!ws || !username) return;
+    if (!ws.isOpen) {
+      setError('Not connected — please wait a moment and try again');
+      return;
+    }
     const ciphertextB64 = encryptMessage(text, roomId);
     const clientMessageId = generateClientMessageId();
 
     // Optimistically render the message immediately without waiting for server fanout.
+    // Only done when WS is confirmed open — prevents phantom messages if the
+    // connection is lost between renders.
     // The server echoes back the confirmed message; on receipt we replace this entry
     // by its clientMessageId so there are no duplicates.
     const optimistic: WsChatMessage = {

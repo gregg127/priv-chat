@@ -65,11 +65,10 @@ export class WebSocketService {
   private connect() {
     if (this.closed) return;
 
-    // In production everything runs behind a single reverse-proxy so we can
-    // use the same origin.  In development the gateway is on :8080 while
-    // Next.js is on :3000, so NEXT_PUBLIC_WS_URL overrides the default.
+    // NEXT_PUBLIC_* vars are embedded at Docker build time.
+    // Use || so an empty-string default also triggers the same-origin fallback.
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL
-      ?? (() => {
+      || (() => {
         const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
         const host = window.location.host;
         return `${protocol}://${host}/ws`;

@@ -69,7 +69,12 @@ export default function ChatArea({
         serverTimestamp: m.serverTimestamp,
         isOwn: m.senderUsername === currentUser,
       })),
-  ].sort((a, b) => a.seq - b.seq);
+  ].sort((a, b) => {
+    // Optimistic messages (seq undefined) always render at the bottom.
+    if (a.seq == null) return 1;
+    if (b.seq == null) return -1;
+    return a.seq - b.seq;
+  });
 
   function handleSend() {
     const trimmed = inputText.trim();
