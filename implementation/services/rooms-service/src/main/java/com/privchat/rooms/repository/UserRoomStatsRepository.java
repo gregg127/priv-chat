@@ -21,6 +21,20 @@ public class UserRoomStatsRepository {
     }
 
     /**
+     * Ensures a user row exists with zero counts. Idempotent — safe to call on every login.
+     * Uses ON CONFLICT DO NOTHING so it's a fast no-op for returning users.
+     */
+    public void ensureRegistered(String username) {
+        dsl.insertInto(USER_ROOM_STATS)
+                .set(USER_ROOM_STATS.USERNAME, username)
+                .set(USER_ROOM_STATS.ROOMS_CREATED_COUNT, 0)
+                .set(USER_ROOM_STATS.ACTIVE_ROOMS_COUNT, 0)
+                .onConflict(USER_ROOM_STATS.USERNAME)
+                .doNothing()
+                .execute();
+    }
+
+    /**
      * Returns stats for a user, or empty if the user has never created a room.
      */
     public Optional<UserRoomStats> findByUsername(String username) {
