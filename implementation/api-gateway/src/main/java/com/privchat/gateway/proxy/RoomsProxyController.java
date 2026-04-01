@@ -46,7 +46,11 @@ public class RoomsProxyController {
                             h.put(name, Collections.list(request.getHeaders(name)));
                         }
                     });
-                    h.set("X-Forwarded-For", request.getRemoteAddr());
+                    String existingXff = request.getHeader("X-Forwarded-For");
+                    String xff = (existingXff != null && !existingXff.isBlank())
+                            ? existingXff + ", " + request.getRemoteAddr()
+                            : request.getRemoteAddr();
+                    h.set("X-Forwarded-For", xff);
                     h.set("X-Forwarded-Proto", request.getScheme());
                     h.set("X-Forwarded-Host", request.getServerName());
                 });

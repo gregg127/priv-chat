@@ -38,3 +38,9 @@ logs/
 # Python (if ever used in tooling)
 __pycache__/
 *.pyc
+
+# Nvim java plugin config
+*.classpath
+*.project
+*.settings/
+*bin/

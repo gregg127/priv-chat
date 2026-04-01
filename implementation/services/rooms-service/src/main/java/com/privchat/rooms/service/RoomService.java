@@ -126,7 +126,11 @@ public class RoomService {
             throw new RoomValidationException("Room name must not exceed 100 characters");
         }
 
-        if (roomRepository.existsByName(newName) && !newName.equals(room.name())) {
+        if (newName.equals(room.name())) {
+            return room;
+        }
+
+        if (roomRepository.existsByName(newName)) {
             throw new RoomNameConflictException("Room name already taken");
         }
 

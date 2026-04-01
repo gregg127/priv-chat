@@ -108,7 +108,8 @@ export default function RoomsPage() {
     try {
       const newRoom = await createRoom(validToken);
       setRooms(prev => [newRoom, ...prev]);
-      router.push(`/portal/rooms/${newRoom.id}`);
+      setError(null);
+      // Room added to list — chat page doesn't exist yet (feature 003)
     } catch (err) {
       if (err instanceof RoomsApiError) {
         if (err.status === 422) {
@@ -120,8 +121,8 @@ export default function RoomsPage() {
     }
   }
 
-  function handleJoin(roomId: number) {
-    router.push(`/portal/rooms/${roomId}`);
+  function handleJoin(_roomId: number) {
+    // Chat page will be implemented in feature 003
   }
 
   async function handleRename(roomId: number, newName: string) {
@@ -131,6 +132,7 @@ export default function RoomsPage() {
     try {
       const updated = await updateRoom(roomId, newName, validToken);
       setRooms(prev => prev.map(r => r.id === roomId ? updated : r));
+      setError(null);
     } catch (err) {
       if (err instanceof RoomsApiError) {
         if (err.status === 409) {
@@ -148,6 +150,7 @@ export default function RoomsPage() {
 
     try {
       await deleteRoom(roomId, validToken);
+      setError(null);
       setRooms(prev => {
         const updated = prev.filter(r => r.id !== roomId);
         if (username) {

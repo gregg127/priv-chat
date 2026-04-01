@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -34,8 +35,12 @@ public class JwksClient {
 
     @Autowired
     public JwksClient(@Value("${entry-auth-service.url:http://entry-auth-service:8080}") String entryAuthUrl) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        factory.setReadTimeout(5_000);
         this.restClient = RestClient.builder()
                 .baseUrl(entryAuthUrl)
+                .requestFactory(factory)
                 .build();
     }
 
