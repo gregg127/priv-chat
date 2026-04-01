@@ -56,7 +56,7 @@
 ## Phase 3: User Story 1 — Browse and Join Public Rooms
 
 **Story goal**: Logged-in user sees all public rooms and can click Join to enter one.
-**Independent test**: Log in → see room list with cards showing name/creator/timestamp/count → click Join → confirm navigation to room view.
+**Independent test**: Log in → see room list with cards showing name/creator/timestamp/count → click Join → button is present (chat navigation deferred to feature 003).
 
 - [x] T022 [P] [US1] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/dto/RoomResponse.java`: Java record with fields `id`, `name`, `creatorUsername`, `createdAt` (ISO-8601 string), `activeMemberCount`; maps from `Room` model
 - [x] T022a [P] [US1] Write failing integration test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/repository/RoomRepositoryTest.java` (Testcontainers + postgres-rooms): assert `findAll()` returns rooms ordered newest-first; `findById()` returns correct room; missing ID returns empty Optional. Run test — must fail.
@@ -66,21 +66,21 @@
 - [x] T026 [US1] Create `implementation/frontend/src/lib/roomsApi.ts`: typed API client functions `fetchRooms()`, `fetchRoom(id)`, `createRoom(name?)`, `updateRoom(id, name)`, `deleteRoom(id)` — each calls the appropriate `/rooms/**` endpoint via `fetch`, includes `Authorization: Bearer ${token}` header from `useAuth()`, returns typed response or throws on non-2xx
 - [x] T027 [US1] Update `implementation/frontend/src/app/portal/EntryGateClient.tsx` (or wherever `JoinResponse` is handled after login) to call `authContext.setToken(response.token)` storing the JWT in memory; redirect to `/portal/rooms` on successful login
 - [x] T028 [P] [US1] Create `implementation/frontend/src/components/RoomCard/index.tsx`: functional component accepting `room: RoomResponse`; displays name, creatorUsername, createdAt (formatted), activeMemberCount, and a "Join" button; clicking Join calls `onJoin(room.id)` prop
-- [x] T029 [US1] Create `implementation/frontend/src/app/portal/rooms/page.tsx`: Room Gateway page; fetches room list via `fetchRooms()` on mount; renders list of `<RoomCard>`; handles Join click (navigate to `/portal/rooms/[id]`); shows loading state; redirects to `/` if no JWT in context (unauthenticated guard)
+- [x] T029 [US1] Create `implementation/frontend/src/app/portal/rooms/page.tsx`: Room Gateway page; fetches room list via `fetchRooms()` on mount; renders list of `<RoomCard>`; handles Join click (no-op — navigation to chat room is deferred to feature 003); shows loading state; redirects to `/` if no JWT in context (unauthenticated guard)
 
 ---
 
 ## Phase 4: User Story 2 — Create Room with Default Values
 
 **Story goal**: User clicks "Create Room" → room created as `{username}-room-{n}` → user enters it immediately.
-**Independent test**: Click "Create Room" → new room appears in list with correct name pattern → user navigated into room.
+**Independent test**: Click "Create Room" → new room appears at top of list with correct name pattern (navigation into room deferred to feature 003).
 
 - [x] T030 [P] [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/dto/CreateRoomRequest.java`: Java record with optional `name` field (may be null); and `UpdateRoomRequest.java` with required `name` field
 - [x] T031 [P] [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/repository/AuditLogRepository.java`: `@Repository`; `insert(String eventType, Long roomId, String roomName, String actorUsername)` writes one append-only row to `room_audit_log` using jOOQ DSL
 - [x] T031a [US2] Write failing unit test `implementation/services/rooms-service/src/test/java/com/privchat/rooms/service/RoomServiceTest.java`: test cap enforcement (`active_rooms_count == 10` → `RoomCapException`); naming sequence (`rooms_created_count = 2` → name `alice-room-3`); custom name uniqueness conflict → 409; successful creation → correct Room returned. Run test — must fail.
 - [x] T032 [US2] Create `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java`: `createRoom(String username, @Nullable String customName)` — within a single DB transaction: (1) upsert `user_room_stats` row for username; (2) check `active_rooms_count < 10`, throw `RoomCapException` if not; (3) resolve name: use `customName` if provided (check uniqueness → 409), else generate `{username}-room-{rooms_created_count+1}` (increment until unique); (4) increment both counters in `user_room_stats`; (5) insert into `rooms`; (6) write `CREATE_ROOM` audit log entry; return created `Room`
 - [x] T033 [US2] Add `POST /rooms` to `implementation/services/rooms-service/src/main/java/com/privchat/rooms/controller/RoomController.java`: accepts `CreateRoomRequest`, calls `RoomService.createRoom()`, returns 201 with `RoomResponse`; handle `RoomCapException` → 422; handle name conflict → 409; handle validation → 400
-- [x] T034 [US2] Add "Create Room" button to `implementation/frontend/src/app/portal/rooms/page.tsx`: calls `createRoom()` from `roomsApi.ts`; on 201 success, navigates user to `/portal/rooms/[id]` of the new room; on 422 response, stores cap-reached state in component state (does not throw)
+- [x] T034 [US2] Add "Create Room" button to `implementation/frontend/src/app/portal/rooms/page.tsx`: calls `createRoom()` from `roomsApi.ts`; on 201 success, new room prepended to list and error cleared (navigation into room deferred to feature 003); on 422 response, stores cap-reached state in component state (does not throw)
 - [x] T035 [US2] Disable "Create Room" button and show cap message in `implementation/frontend/src/app/portal/rooms/page.tsx` when cap-reached state is set (set on 422 from POST, or infer by counting rooms where `creatorUsername === currentUser`); button re-enables only if active rooms drop below 10 in the future
 
 ---

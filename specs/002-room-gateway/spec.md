@@ -40,12 +40,12 @@ a conversation.
    button.
 
 2. **Given** the Room Gateway is visible with multiple rooms, **When** the user
-   clicks "Join" on a specific room, **Then** they are taken into that room's
-   chat view.
+   clicks "Join" on a specific room, **Then** the "Join" button is available
+   (navigation into the room's chat view is deferred to feature 003).
 
 3. **Given** the Room Gateway is visible, **When** a new room is created by
-   another user (in real time), **Then** that room appears in the list without
-   requiring a page refresh.
+   another user, **Then** that room appears in the list within 10 seconds
+   (via polling) without requiring a page refresh.
 
 4. **Given** the user has no valid session, **When** they navigate to the Room
    Gateway URL directly, **Then** they are redirected to the network entry gate.
@@ -58,15 +58,15 @@ A logged-in user wants to start a new conversation. They click the "Create
 Room" button on the Room Gateway. A new public room is created immediately with
 a default name derived from the user's username and a sequential room counter
 (e.g., "alice-room-3" for Alice's third created room). The new room appears in
-the list and the user is taken into it.
+the list and the user is taken into it (chat navigation deferred to feature 003).
 
 **Why this priority**: Room creation is the supply side of the gateway. Without
 it, users can only consume existing rooms. It is prioritised below P1 because
 the gateway is still useful for joining if room creation is not yet available.
 
 **Independent Test**: From the Room Gateway, click "Create Room". Verify a new
-room appears in the list with a name following the `{username}-room-{n}` pattern
-and that the user is immediately placed inside that room. Deliverable value: a
+room appears in the list with a name following the `{username}-room-{n}` pattern.
+(Navigation into the room is deferred to feature 003.) Deliverable value: a
 user can start a new conversation without any configuration.
 
 **Acceptance Scenarios**:
@@ -74,7 +74,8 @@ user can start a new conversation without any configuration.
 1. **Given** a logged-in user is on the Room Gateway, **When** they click
    "Create Room", **Then** a new public room is created with the default name
    `{username}-room-{n}` where `n` is the next sequential number for rooms
-   created by that user, and the user is taken into the new room.
+   created by that user, and the new room appears at the top of the room list.
+   (Navigation into the room is deferred to feature 003.)
 
 2. **Given** Alice has previously created 2 rooms, **When** she clicks "Create
    Room" again, **Then** the new room is named `alice-room-3`.
@@ -179,18 +180,19 @@ return an error.
 - **FR-002**: The Room Gateway MUST display a list of all currently available
   public rooms. Each room card MUST show: room name, creator username, creation
   timestamp, current occupant count, and a "Join" button.
-- **FR-003**: The room list MUST update in real time when rooms are created or
-  removed by other users, without requiring a page refresh.
-- **FR-004**: Clicking the "Join" button on a room MUST navigate the user into
-  that room's chat view.
+- **FR-003**: The room list MUST update within 10 seconds (via polling) when
+  rooms are created or removed by other users, without requiring a page refresh.
+- **FR-004**: The Room Gateway MUST display a "Join" button on each room card.
+  Navigation into the room's chat view is deferred to feature 003 (Chat Room).
 - **FR-005**: The Room Gateway MUST provide a single "Create Room" button.
 - **FR-006**: Clicking "Create Room" MUST create a new public room with a
   default name following the pattern `{username}-room-{n}`, where `n` is the
   next available sequential number for rooms created by that user (starting
   at 1). The API additionally accepts an optional custom `name` field for
   future extensibility; the v1 UI does not expose this option.
-- **FR-007**: After creating a room, the user MUST be automatically navigated
-  into the newly created room.
+- **FR-007**: After creating a room, the new room MUST appear at the top of the
+  room list immediately. Navigation into the newly created room is deferred to
+  feature 003 (Chat Room).
 - **FR-008**: When no rooms exist, the Room Gateway MUST display an empty-state
   message and keep the "Create Room" button prominently visible.
 - **FR-009**: Access to the Room Gateway MUST be restricted to users with a
