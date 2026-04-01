@@ -47,10 +47,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         this.statsRepository = statsRepository;
     }
 
-    /** Skip JWT validation for public endpoints (actuator, etc.). */
+    /**
+     * Skip JWT validation for public endpoints.
+     *
+     * <p>{@code /ws} is excluded because the browser WebSocket API cannot send
+     * custom HTTP headers during the upgrade handshake. JWT auth for WebSocket
+     * is handled inside {@link com.privchat.rooms.ws.ChatWebSocketHandler}
+     * via the first message frame after the connection is established.
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/actuator/");
+        String uri = request.getRequestURI();
+        return uri.startsWith("/actuator/") || "/ws".equals(uri);
     }
 
     @Override
