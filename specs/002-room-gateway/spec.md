@@ -233,7 +233,7 @@ return an error.
   30 seconds from the moment the Room Gateway loads.
 - **SC-002**: A logged-in user can create a new room in under 5 seconds
   (one click, no configuration required).
-- **SC-003**: The room list reflects newly created rooms within 2 seconds
+- **SC-003**: The room list reflects newly created rooms within 10 seconds (polling interval intentionally set to 10 s to avoid interval-restart memory leak)
   of creation across all connected clients.
 - **SC-004**: 100% of unauthenticated navigation attempts to the Room Gateway
   result in a redirect to the entry gate.

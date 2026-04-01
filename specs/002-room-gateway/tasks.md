@@ -111,7 +111,7 @@
 
 - [x] T042 Implement `UNAUTHORIZED_ATTEMPT` audit log writes in `implementation/services/rooms-service/src/main/java/com/privchat/rooms/service/RoomService.java` for all 403 code paths (PUT and DELETE non-creator attempts) using `AuditLogRepository`
 - [x] T043 Add JWT refresh logic to `implementation/frontend/src/lib/authContext.tsx` (or a dedicated hook): check remaining JWT lifetime on each rooms API call; if < 60 seconds, call `GET /auth/refresh-token` (using session cookie) and update `token` in context before retrying the rooms API call
-- [x] T044 Add real-time room list updates to `implementation/frontend/src/app/portal/rooms/page.tsx`: poll `GET /rooms` every 2 seconds (or implement SSE if supported) so newly created/deleted rooms appear within 2 seconds (FR-003, SC-003) without a full page refresh; cancel polling on component unmount
+- [x] T044 Add real-time room list updates to `implementation/frontend/src/app/portal/rooms/page.tsx`: poll `GET /rooms` every 10 seconds (intentionally reduced from 2 s to prevent interval-restart memory leak) so newly created/deleted rooms appear within 10 seconds (FR-003, SC-003) without a full page refresh; cancel polling on component unmount
 
 ---
 

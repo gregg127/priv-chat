@@ -7,7 +7,7 @@ import { fetchRooms, createRoom, updateRoom, deleteRoom, refreshToken, RoomRespo
 import RoomCard from '@/components/RoomCard';
 import EmptyState from '@/components/EmptyState';
 
-const POLL_INTERVAL_MS = 2_000; // 2 s — per SC-003 (stable interval: no restart on token refresh)
+const POLL_INTERVAL_MS = 10_000; // 10 s — intentional: 2 s caused interval-restart memory leak (see git log)
 
 /**
  * Room Gateway page.
