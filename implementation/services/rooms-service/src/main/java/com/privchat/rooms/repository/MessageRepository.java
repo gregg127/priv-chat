@@ -29,14 +29,8 @@ public class MessageRepository {
      * Returns empty if client_message_id already exists (idempotent retry).
      */
     public Optional<Message> insert(Long roomId, String senderUsername, byte[] ciphertext, UUID clientMessageId) {
-        // Atomic seq increment
-        Long seq = dsl.update(ROOMS)
-                .set(ROOMS.MESSAGE_SEQ, ROOMS.MESSAGE_SEQ.plus(1L))
-                .where(ROOMS.ID.eq(roomId))
-                .returning(ROOMS.MESSAGE_SEQ)
-                .fetchOne()
-                .getMessageSeq();
-
+        // Duplicate check BEFORE allocating a seq number — prevents permanent sequence gaps
+        // when clients retry on transient failures.
         var existing = dsl.selectFrom(MESSAGES)
                 .where(MESSAGES.ROOM_ID.eq(roomId)
                         .and(MESSAGES.CLIENT_MESSAGE_ID.eq(clientMessageId)))
@@ -44,6 +38,14 @@ public class MessageRepository {
         if (existing.isPresent()) {
             return Optional.empty();
         }
+
+        // Atomic seq increment — only reached for truly new messages.
+        Long seq = dsl.update(ROOMS)
+                .set(ROOMS.MESSAGE_SEQ, ROOMS.MESSAGE_SEQ.plus(1L))
+                .where(ROOMS.ID.eq(roomId))
+                .returning(ROOMS.MESSAGE_SEQ)
+                .fetchOne()
+                .getMessageSeq();
 
         var r = dsl.insertInto(MESSAGES)
                 .set(MESSAGES.ROOM_ID, roomId)
