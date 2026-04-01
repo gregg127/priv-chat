@@ -12,7 +12,7 @@ import {
   MessageResponse,
   RoomsApiError,
 } from '@/lib/roomsApi';
-import { WebSocketService, WsChatMessage } from '@/lib/websocket/WebSocketService';
+import { WebSocketService, WsChatMessage, WsDeletedMessage } from '@/lib/websocket/WebSocketService';
 import { encryptMessage, generateClientMessageId } from '@/lib/signal/signalClient';
 import ChatArea from '@/components/ChatArea';
 import MemberList from '@/components/MemberList';
@@ -101,6 +101,14 @@ export default function RoomPage() {
           }
           return [...prev, chatMsg];
         });
+      }
+    });
+
+    ws.on('message_deleted', (msg) => {
+      const del = msg as WsDeletedMessage;
+      if (del.roomId === roomId) {
+        setHistory(prev => prev.filter(m => m.id !== del.messageId));
+        setLiveMessages(prev => prev.filter(m => m.id !== del.messageId));
       }
     });
 

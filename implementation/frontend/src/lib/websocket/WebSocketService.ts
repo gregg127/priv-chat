@@ -21,6 +21,7 @@ export type WsMessageType =
   | 'subscribed'
   | 'unsubscribed'
   | 'message'
+  | 'message_deleted'
   | 'ack'
   | 'error';
 
@@ -43,6 +44,12 @@ export interface WsChatMessage extends WsInboundMessage {
   timestamp?: string;
   /** True for locally-injected optimistic entries that haven't been confirmed by the server yet */
   optimistic?: boolean;
+}
+
+export interface WsDeletedMessage extends WsInboundMessage {
+  type: 'message_deleted';
+  roomId: number;
+  messageId: number;
 }
 
 type MessageHandler = (msg: WsInboundMessage) => void;

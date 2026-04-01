@@ -257,13 +257,41 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             log.error("ws.fanout_serialize_error roomId={}", roomId, e);
             return;
         }
+        broadcast(roomId, payload);
+    }
+
+    /**
+     * Broadcasts a {@code message_deleted} event to all subscribers of the room.
+     * Called by {@link com.privchat.rooms.controller.MessageController} after a
+     * successful soft-delete so that every connected client removes the message
+     * from its in-memory state without requiring a page refresh.
+     */
+    public void fanoutDeletedMessage(Long roomId, Long messageId) {
+        String payload;
+        try {
+            payload = objectMapper.writeValueAsString(Map.of(
+                    "type", "message_deleted",
+                    "roomId", roomId,
+                    "messageId", messageId
+            ));
+        } catch (Exception e) {
+            log.error("ws.fanout_delete_serialize_error roomId={} messageId={}", roomId, messageId, e);
+            return;
+        }
+        log.debug("ws.fanout_delete roomId={} messageId={}", roomId, messageId);
+        broadcast(roomId, payload);
+    }
+
+    /** Sends a pre-serialised payload to every open session subscribed to a room. */
+    private void broadcast(Long roomId, String payload) {
+        var sessions = roomSessions.getOrDefault(roomId, new CopyOnWriteArraySet<>());
         TextMessage textMessage = new TextMessage(payload);
         for (WebSocketSession s : sessions) {
             if (s.isOpen()) {
                 try {
                     s.sendMessage(textMessage);
                 } catch (IOException e) {
-                    log.warn("ws.fanout_send_error sessionId={} roomId={}", s.getId(), roomId);
+                    log.warn("ws.broadcast_send_error sessionId={} roomId={}", s.getId(), roomId);
                 }
             }
         }

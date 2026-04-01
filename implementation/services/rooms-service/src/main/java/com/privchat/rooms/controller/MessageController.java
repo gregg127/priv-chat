@@ -2,6 +2,7 @@ package com.privchat.rooms.controller;
 
 import com.privchat.rooms.model.Message;
 import com.privchat.rooms.service.message.MessageService;
+import com.privchat.rooms.ws.ChatWebSocketHandler;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,9 +28,12 @@ import java.util.Map;
 public class MessageController {
 
     private final MessageService messageService;
+    private final ChatWebSocketHandler chatWebSocketHandler;
 
-    public MessageController(MessageService messageService) {
+    public MessageController(MessageService messageService,
+                             ChatWebSocketHandler chatWebSocketHandler) {
         this.messageService = messageService;
+        this.chatWebSocketHandler = chatWebSocketHandler;
     }
 
     /**
@@ -76,6 +80,9 @@ public class MessageController {
         String username = currentUsername();
         try {
             messageService.deleteMessage(id, messageId, username);
+            // Notify all connected room subscribers so they remove the message
+            // from their in-memory state without requiring a page refresh.
+            chatWebSocketHandler.fanoutDeletedMessage(id, messageId);
             return ResponseEntity.noContent().build();
         } catch (MessageService.MessageException.NotOwner e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
