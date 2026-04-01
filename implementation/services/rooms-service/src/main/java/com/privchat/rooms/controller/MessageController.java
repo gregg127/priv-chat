@@ -68,7 +68,7 @@ public class MessageController {
 
     /**
      * DELETE /rooms/{id}/messages/{messageId}
-     * Soft-deletes a single message. Room owner only.
+     * Soft-deletes a message. Users may only delete their own messages.
      */
     @DeleteMapping("/{messageId}")
     public ResponseEntity<?> deleteMessage(@PathVariable Long id,
@@ -78,6 +78,8 @@ public class MessageController {
             messageService.deleteMessage(id, messageId, username);
             return ResponseEntity.noContent().build();
         } catch (MessageService.MessageException.NotOwner e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        } catch (MessageService.MessageException.NotMember e) {
             return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
         } catch (MessageService.MessageException.RoomNotFound e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));

@@ -233,11 +233,10 @@ export default function RoomPage() {
           <ChatArea
             roomId={roomId}
             currentUser={username ?? ''}
-            isOwner={isOwner}
             initialMessages={history}
             liveMessages={liveMessages}
             onSend={handleSend}
-            onDeleteMessage={isOwner ? handleDeleteMessage : undefined}
+            onDeleteMessage={handleDeleteMessage}
           />
         </div>
 

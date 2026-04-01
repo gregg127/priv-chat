@@ -88,19 +88,27 @@ public class MessageService {
     }
 
     /**
-     * Soft-deletes a message. Only the room owner may delete any message.
+     * Soft-deletes a message. Users may only delete their own messages.
      *
-     * @throws MessageException.NotOwner     if caller is not the room owner
+     * @throws MessageException.NotOwner     if caller did not send this message
      * @throws MessageException.NotFound     if message does not exist
      * @throws MessageException.RoomNotFound if the room does not exist
+     * @throws MessageException.NotMember    if caller is not a member of the room
      */
     @Transactional
     public Message deleteMessage(Long roomId, Long messageId, String actorUsername) {
-        var room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new MessageException.RoomNotFound("Room not found"));
-        if (!room.ownerUsername().equals(actorUsername)) {
-            auditLogRepository.insert("UNAUTHORIZED_ATTEMPT", roomId, room.name(), actorUsername);
-            throw new MessageException.NotOwner("Only the room owner can delete messages");
+        if (!roomRepository.findById(roomId).isPresent()) {
+            throw new MessageException.RoomNotFound("Room not found");
+        }
+        if (!memberRepository.isMember(roomId, actorUsername)) {
+            throw new MessageException.NotMember("Not a member of this room");
+        }
+        var message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new MessageException.NotFound("Message not found"));
+        if (!message.senderUsername().equals(actorUsername)) {
+            auditLogRepository.insert("UNAUTHORIZED_ATTEMPT", roomId,
+                    "room#" + roomId, actorUsername);
+            throw new MessageException.NotOwner("You can only delete your own messages");
         }
         return messageRepository.softDelete(messageId)
                 .orElseThrow(() -> new MessageException.NotFound("Message not found"));

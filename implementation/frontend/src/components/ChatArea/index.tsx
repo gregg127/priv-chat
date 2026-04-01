@@ -13,12 +13,12 @@ export interface DisplayMessage {
   clientMessageId: string;
   serverTimestamp: string;
   isOwn: boolean;
+  optimistic?: boolean;
 }
 
 interface ChatAreaProps {
   roomId: number;
   currentUser: string;
-  isOwner: boolean;
   /** Initial messages loaded from REST history endpoint */
   initialMessages: MessageResponse[];
   /** Live messages pushed over WebSocket */
@@ -27,14 +27,28 @@ interface ChatAreaProps {
   onDeleteMessage?: (messageId: number) => void;
 }
 
+/** Stable per-user avatar color derived from the username. */
+const USER_COLORS = [
+  '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71',
+  '#1abc9c', '#3498db', '#9b59b6', '#e91e63',
+  '#00bcd4', '#ff5722',
+];
+function userColor(username: string): string {
+  let h = 0;
+  for (let i = 0; i < username.length; i++) h = (h * 31 + username.charCodeAt(i)) >>> 0;
+  return USER_COLORS[h % USER_COLORS.length];
+}
+
 /**
  * Chat area: renders message history + live messages, input box.
- * Handles empty state (FR-011) and owner delete action (FR-017).
+ * - All messages show the sender's name so conversations are attributable.
+ * - Own messages are right-aligned and tinted; others are left-aligned.
+ * - Delete (✕) appears only on the current user's own messages.
+ * - Empty state shown when there are no messages (FR-011).
  */
 export default function ChatArea({
   roomId,
   currentUser,
-  isOwner,
   initialMessages,
   liveMessages,
   onSend,
@@ -68,6 +82,7 @@ export default function ChatArea({
         clientMessageId: m.clientMessageId,
         serverTimestamp: m.serverTimestamp,
         isOwn: m.senderUsername === currentUser,
+        optimistic: m.optimistic,
       })),
   ].sort((a, b) => {
     // Optimistic messages (seq undefined) always render at the bottom.
@@ -126,57 +141,78 @@ export default function ChatArea({
             <p style={{ margin: 0 }}>No messages yet. Say hello!</p>
           </div>
         ) : (
-          allMessages.map(msg => (
-            <div
-              key={msg.clientMessageId}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: msg.isOwn ? 'flex-end' : 'flex-start',
-              }}
-            >
+          allMessages.map(msg => {
+            const color = userColor(msg.senderUsername);
+            return (
               <div
+                key={msg.clientMessageId}
                 style={{
-                  background: msg.isOwn ? '#0070f3' : '#f1f1f1',
-                  color: msg.isOwn ? '#fff' : '#000',
-                  borderRadius: 12,
-                  padding: '8px 12px',
-                  maxWidth: '70%',
-                  wordBreak: 'break-word',
-                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: msg.isOwn ? 'flex-end' : 'flex-start',
+                  opacity: msg.optimistic ? 0.65 : 1,
                 }}
               >
-                {!msg.isOwn && (
-                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2, color: '#555' }}>
-                    {msg.senderUsername}
+                {/* Sender label — always shown so every message is attributable */}
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    marginBottom: 2,
+                    color: msg.isOwn ? '#0050aa' : color,
+                    paddingLeft: 4,
+                    paddingRight: 4,
+                  }}
+                >
+                  {msg.isOwn ? 'You' : msg.senderUsername}
+                  {msg.optimistic && <span style={{ fontWeight: 400, marginLeft: 4 }}>sending…</span>}
+                </div>
+
+                <div
+                  style={{
+                    background: msg.isOwn ? '#dbeafe' : '#f1f1f1',
+                    color: '#111',
+                    borderRadius: 12,
+                    borderTopRightRadius: msg.isOwn ? 2 : 12,
+                    borderTopLeftRadius: msg.isOwn ? 12 : 2,
+                    padding: '8px 12px',
+                    maxWidth: '70%',
+                    wordBreak: 'break-word',
+                    position: 'relative',
+                    borderLeft: msg.isOwn ? 'none' : `3px solid ${color}`,
+                  }}
+                >
+                  <div>{msg.text ?? '[encrypted]'}</div>
+
+                  {/* Delete only on own messages */}
+                  {msg.isOwn && !msg.optimistic && onDeleteMessage && (
+                    <button
+                      onClick={() => onDeleteMessage(msg.id)}
+                      aria-label="Delete this message"
+                      style={{
+                        position: 'absolute',
+                        top: 4,
+                        right: 4,
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 10,
+                        color: '#aaa',
+                        padding: 2,
+                        lineHeight: 1,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+
+                  <div style={{ fontSize: 10, opacity: 0.55, marginTop: 4, textAlign: 'right' }}>
+                    {new Date(msg.serverTimestamp).toLocaleTimeString()}
                   </div>
-                )}
-                <div>{msg.text ?? '[encrypted]'}</div>
-                {isOwner && onDeleteMessage && (
-                  <button
-                    onClick={() => onDeleteMessage(msg.id)}
-                    aria-label={`Delete message from ${msg.senderUsername}`}
-                    style={{
-                      position: 'absolute',
-                      top: 4,
-                      right: 4,
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 10,
-                      color: msg.isOwn ? 'rgba(255,255,255,0.7)' : '#999',
-                      padding: 2,
-                    }}
-                  >
-                    ✕
-                  </button>
-                )}
-                <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4, textAlign: 'right' }}>
-                  {new Date(msg.serverTimestamp).toLocaleTimeString()}
                 </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>
