@@ -48,7 +48,7 @@ public record RoomResponse(
                 room.creatorUsername(),
                 room.ownerUsername(),
                 room.createdAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                room.activeMemberCount(),
+                memberDtos.size(), // use actual list size — always accurate
                 memberDtos
         );
     }

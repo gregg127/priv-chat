@@ -66,7 +66,7 @@ public class RoomMemberRepository {
                 ));
     }
 
-    /** Inserts a new room member. Returns the created record. */
+    /** Inserts a new room member and atomically increments rooms.active_member_count. */
     public RoomMember insert(Long roomId, String username, String invitedBy, long joinSeq) {
         var r = dsl.insertInto(ROOM_MEMBERS)
                 .set(ROOM_MEMBERS.ROOM_ID, roomId)
@@ -75,6 +75,11 @@ public class RoomMemberRepository {
                 .set(ROOM_MEMBERS.JOIN_SEQ, joinSeq)
                 .returning()
                 .fetchOne();
+        dsl.update(com.privchat.rooms.jooq.Tables.ROOMS)
+                .set(com.privchat.rooms.jooq.Tables.ROOMS.ACTIVE_MEMBER_COUNT,
+                        com.privchat.rooms.jooq.Tables.ROOMS.ACTIVE_MEMBER_COUNT.plus(1))
+                .where(com.privchat.rooms.jooq.Tables.ROOMS.ID.eq(roomId))
+                .execute();
         return new RoomMember(r.getRoomId(), r.getUsername(), r.getInvitedBy(), r.getJoinedAt(), r.getJoinSeq());
     }
 
