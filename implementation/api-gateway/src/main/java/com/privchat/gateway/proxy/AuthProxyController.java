@@ -24,7 +24,8 @@ public class AuthProxyController {
     public AuthProxyController(@Value("${services.auth.url:http://entry-auth-service:8080}") String authUrl) {
         this.restClient = RestClient.builder()
                 .baseUrl(authUrl)
-                .defaultStatusHandler(HttpStatusCode::isError, (req, res) -> { /* pass error responses through */ })
+                .defaultStatusHandler(HttpStatusCode::isError, (req, res) -> {
+                    /* pass error responses through */ })
                 .build();
     }
 
@@ -32,7 +33,8 @@ public class AuthProxyController {
     public ResponseEntity<byte[]> proxy(HttpMethod method, HttpServletRequest request) throws IOException {
         String uri = request.getRequestURI();
         String query = request.getQueryString();
-        if (query != null) uri = uri + "?" + query;
+        if (query != null)
+            uri = uri + "?" + query;
 
         log.info("→ {} {}", method, uri);
 
@@ -46,7 +48,11 @@ public class AuthProxyController {
                             h.put(name, Collections.list(request.getHeaders(name)));
                         }
                     });
-                    h.set("X-Forwarded-For", request.getRemoteAddr());
+                    String existingXff = request.getHeader("X-Forwarded-For");
+                    String xff = (existingXff != null && !existingXff.isBlank())
+                            ? existingXff + ", " + request.getRemoteAddr()
+                            : request.getRemoteAddr();
+                    h.set("X-Forwarded-For", xff);
                     h.set("X-Forwarded-Proto", request.getScheme());
                     h.set("X-Forwarded-Host", request.getServerName());
                 });

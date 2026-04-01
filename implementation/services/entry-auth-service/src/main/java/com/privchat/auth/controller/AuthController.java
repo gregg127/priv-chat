@@ -3,7 +3,9 @@ package com.privchat.auth.controller;
 import com.privchat.auth.controller.dto.JoinRequest;
 import com.privchat.auth.controller.dto.JoinResponse;
 import com.privchat.auth.controller.dto.SessionResponse;
+import com.privchat.auth.controller.dto.TokenResponse;
 import com.privchat.auth.service.AuthService;
+import com.privchat.auth.service.JwtService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpStatus;
@@ -17,9 +19,11 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtService jwtService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, JwtService jwtService) {
         this.authService = authService;
+        this.jwtService = jwtService;
     }
 
     /**
@@ -46,9 +50,8 @@ public class AuthController {
             : "unknown";
 
         try {
-            authService.join(request.username(), request.password(), clientIp, session);
-            String trimmedUsername = request.username().trim();
-            return ResponseEntity.ok(new JoinResponse(trimmedUsername));
+            AuthService.JoinResult result = authService.join(request.username(), request.password(), clientIp, session);
+            return ResponseEntity.ok(new JoinResponse(result.username(), result.token()));
         } catch (AuthService.ValidationException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (AuthService.InvalidPasswordException e) {
@@ -87,5 +90,21 @@ public class AuthController {
         }
         authService.logout(session);
         return ResponseEntity.ok(Map.of("message", "Signed out"));
+    }
+
+    /**
+     * GET /auth/refresh-token
+     * Requires valid session cookie. Issues a fresh JWT.
+     * Response: 200 {token} | 401 {error}
+     */
+    @GetMapping("/refresh-token")
+    public ResponseEntity<?> refreshToken(HttpSession session) {
+        AuthService.SessionInfo info = authService.checkSession(session);
+        if (!info.authenticated()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Authentication required"));
+        }
+        String token = jwtService.generateToken(info.username());
+        return ResponseEntity.ok(new TokenResponse(token));
     }
 }

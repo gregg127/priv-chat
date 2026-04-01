@@ -1,3 +1,3 @@
 package com.privchat.auth.controller.dto;
 
-public record JoinResponse(String username) {}
+public record JoinResponse(String username, String token) {}

@@ -24,7 +24,7 @@ export class AuthApiError extends Error {
 export async function joinNetwork(
   username: string,
   password: string
-): Promise<{ username: string }> {
+): Promise<{ username: string; token?: string }> {
   const response = await fetch('/auth/join', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -34,7 +34,7 @@ export async function joinNetwork(
 
   if (response.ok) {
     const data = await response.json();
-    return { username: data.username };
+    return { username: data.username, token: data.token };
   }
 
   const retryAfter = response.headers.get('Retry-After');

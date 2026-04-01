@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import JoinForm from '@/components/JoinForm/JoinForm';
 import { joinNetwork } from '@/lib/authApi';
+import { useAuth } from '@/lib/authContext';
 
 /**
  * Client component: handles localStorage hydration of username
@@ -11,6 +12,7 @@ import { joinNetwork } from '@/lib/authApi';
  */
 export default function EntryGateClient() {
   const router = useRouter();
+  const { setToken, setUsername } = useAuth();
   const [defaultUsername, setDefaultUsername] = useState('');
 
   // Hydrate username from localStorage after mount (not available server-side)
@@ -22,12 +24,17 @@ export default function EntryGateClient() {
   }, []);
 
   async function handleSubmit(username: string, password: string) {
-    await joinNetwork(username, password);
+    const result = await joinNetwork(username, password);
+    return result;
   }
 
-  function handleSuccess(username: string) {
+  function handleSuccess(username: string, token?: string) {
     localStorage.setItem('privchat_username', username);
-    router.push('/portal');
+    if (token) {
+      setToken(token);
+    }
+    setUsername(username);
+    router.push('/portal/rooms');
   }
 
   return (

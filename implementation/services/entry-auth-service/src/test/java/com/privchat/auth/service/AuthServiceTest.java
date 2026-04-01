@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,7 +35,10 @@ class AuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(auditLogService, rateLimitService, CORRECT_PASSWORD);
+        // Mock JwtService for tests that don't need real JWT generation
+        JwtService jwtService = mock(JwtService.class);
+        lenient().when(jwtService.generateToken(anyString())).thenReturn("mock-jwt-token");
+        authService = new AuthService(auditLogService, rateLimitService, jwtService, CORRECT_PASSWORD);
     }
 
     // ─── US1: join() tests ────────────────────────────────────────────────────

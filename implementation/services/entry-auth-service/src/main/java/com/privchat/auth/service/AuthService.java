@@ -10,24 +10,28 @@ public class AuthService {
 
     private final AuditLogService auditLogService;
     private final RateLimitService rateLimitService;
+    private final JwtService jwtService;
     private final String networkPassword;
 
     public AuthService(AuditLogService auditLogService,
                        RateLimitService rateLimitService,
+                       JwtService jwtService,
                        @Value("${NETWORK_PASSWORD}") String networkPassword) {
         this.auditLogService = auditLogService;
         this.rateLimitService = rateLimitService;
+        this.jwtService = jwtService;
         this.networkPassword = networkPassword;
     }
 
     /**
      * Attempts to join the network with the given credentials.
+     * Returns a JoinResult containing the trimmed username and a signed JWT.
      *
      * @throws ValidationException   if username is blank or too long, or password is blank
      * @throws RateLimitedException  if the IP has exceeded the rate limit
      * @throws InvalidPasswordException if the password is incorrect
      */
-    public void join(String username, String password, String ipAddress, HttpSession session) {
+    public JoinResult join(String username, String password, String ipAddress, HttpSession session) {
         // 1. Validate inputs
         if (username == null || username.trim().isEmpty()) {
             throw new ValidationException("Username cannot be blank");
@@ -56,6 +60,10 @@ public class AuthService {
         session.setAttribute("username", trimmedUsername);
         session.setAttribute("authenticated", true);
         auditLogService.log(new SecurityAuditLog("JOIN_SUCCESS", ipAddress, trimmedUsername));
+
+        // 5. Issue JWT
+        String token = jwtService.generateToken(trimmedUsername);
+        return new JoinResult(trimmedUsername, token);
     }
 
     /**
@@ -86,6 +94,8 @@ public class AuthService {
     }
 
     // ─── Nested types ────────────────────────────────────────────────────────
+
+    public record JoinResult(String username, String token) {}
 
     public record SessionInfo(boolean authenticated, String username) {}
 
