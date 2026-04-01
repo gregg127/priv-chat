@@ -54,7 +54,7 @@
 
 ### Tests for User Story 1 ⚠️ Write and confirm FAILING before any implementation
 
-- [ ] T027 [US1] Write Playwright E2E test (must FAIL before T015 begins): member navigates to room, sees room name and member list; non-member gets access denied in `frontend/tests/e2e/room-details.spec.ts`
+- [ ] T027 [US1] Write Playwright E2E test (must FAIL before T015 begins): member navigates to room, sees room name and member list within 2 seconds (SC-001); non-member gets access denied in `frontend/tests/e2e/room-details.spec.ts`
 
 ### Implementation for User Story 1
 
@@ -111,29 +111,29 @@
 
 ## Phase 5: User Story 2 — Send and Receive Messages (Priority: P2)
 
-**Goal**: Members send E2E-encrypted messages; all room members receive them in real time. Server stores ciphertext only.
+**Goal**: Members send E2E-encrypted messages; all room members receive them in real time. Server stores ciphertext only. Owner can delete individual messages. Empty/whitespace messages are rejected client-side and server-side.
 
-**Independent Test**: Two members in the same room exchange messages — each sees the other's message appear without page reload, decrypted correctly. A non-member cannot receive or send messages.
+**Independent Test**: Two members exchange messages within 1 second (SC-002); owner deletes a message and it disappears for all members; non-owner cannot see delete action; empty message submission is blocked with a validation error; non-member cannot access chat.
 
 ### Tests for User Story 2 ⚠️ Write and confirm FAILING before any implementation
 
 - [ ] T052 [US2] Write unit test (must FAIL before T049 begins): Signal Protocol encrypt/decrypt round-trip using known Signal test vectors in `frontend/tests/unit/signal.test.ts`
-- [ ] T053 [P] [US2] Write Playwright E2E test (must FAIL before T042 begins): two users in same room exchange messages — messages appear for both, non-member cannot access chat in `frontend/tests/e2e/chat.spec.ts`
+- [ ] T053 [P] [US2] Write Playwright E2E test (must FAIL before T042 begins): (a) two users exchange messages; each sees the other's within 1 second (SC-002); (b) owner deletes a message — it disappears for all members; (c) non-owner has no delete action visible; (d) empty/whitespace message submission is blocked with a validation error; (e) non-member cannot send or view messages — in `frontend/tests/e2e/chat.spec.ts`
 
 ### Implementation for User Story 2
 
 - [ ] T042 [P] [US2] Implement `Message` TypeScript model and DB query helpers: insert with atomic seq assignment (`MAX(seq)+1` per room), fetch by `roomId + seq range + join_seq boundary`, soft-delete by id in `backend/src/models/Message.ts`
 - [ ] T043 [US2] Implement `MessageService`: `storeMessage(roomId, senderId, ciphertext, clientMessageId)` (deduplicates on `clientMessageId`, assigns seq, returns stored message), `deleteMessage(messageId, requestingUserId)` (owner-only, sets `deleted_at`, emits `message_deleted`) in `backend/src/services/message/MessageService.ts`
-- [ ] T044 [US2] Implement WebSocket `message` handler: validate membership + rate limit → call `MessageService.storeMessage` → send `message_ack` to sender → fan out `message_new` to all room subscribers in `backend/src/ws/handler.ts`
+- [ ] T044 [US2] Implement WebSocket `message` handler: validate membership + rate limit + non-empty ciphertext (reject if payload is missing or zero-length, per FR-020) → call `MessageService.storeMessage` → send `message_ack` to sender → fan out `message_new` to all room subscribers in `backend/src/ws/handler.ts`
 - [ ] T045 [US2] Implement `FanoutService`: broadcast a frame to all clients subscribed to a given `roomId` (iterates `roomChannels[roomId]`), handles dead connections gracefully in `backend/src/services/websocket/FanoutService.ts`
 - [ ] T046 [US2] Implement `GET /api/v1/rooms/:roomId/messages` REST endpoint: paginated by `before_seq`, enforces `join_seq` boundary, returns ciphertext array per `contracts/rest-api.md` in `backend/src/api/messages.ts`
-- [ ] T047 [P] [US2] Implement `ChatArea` component: scrollable message list (ordered by seq), message input box, optimistic send (confirm on `message_ack`); each message MUST display sender's `displayName` (from `message_new` payload — resolved server-side) and formatted `serverTimestamp`; render empty-state ("No messages yet") when message store is empty (FR-007, FR-011) in `frontend/src/components/ChatArea/ChatArea.tsx`
+- [ ] T047 [P] [US2] Implement `ChatArea` component: scrollable message list (ordered by seq), message input box with send button disabled when input is empty or whitespace (FR-020 client validation + show validation hint on submit attempt); optimistic send (confirm on `message_ack`); each message displays sender's `displayName` and formatted `serverTimestamp` (FR-007); owner-only delete icon per message — clicking sends `delete_message` WS frame and removes from local store (FR-017); non-owner sees no delete icon; render empty-state ("No messages yet") when message store is empty (FR-011) in `frontend/src/components/ChatArea/ChatArea.tsx`
 - [ ] T048 [US2] Implement message store: holds messages ordered by `seq`, deduplicates on `clientMessageId`, handles `message_deleted` removal in `frontend/src/store/messageStore.ts`
 - [ ] T049 [US2] Implement frontend `SignalService` SenderKey encrypt/decrypt: `encryptMessage(roomId, plaintext)` → base64 `SenderKeyMessage`, `decryptMessage(roomId, senderId, ciphertext)` → plaintext in `frontend/src/services/signal/SignalService.ts`
-- [ ] T050 [US2] Implement WebSocket `message` send (encrypt → send frame), `message_ack` handler (update store with seq + serverTimestamp + senderDisplayName), `message_new` handler (decrypt → add to store; payload includes `senderDisplayName` resolved server-side from User entity), `message_deleted` handler (remove from store) in `frontend/src/services/websocket/WebSocketService.ts`
+- [ ] T050 [US2] Implement WebSocket `message` send (encrypt → send frame), `message_ack` handler (update store with seq + serverTimestamp + senderDisplayName), `message_new` handler (decrypt → add to store; payload includes `senderDisplayName` resolved server-side from User entity), `message_deleted` handler (remove from store), and `delete_message` send (owner clicks delete → send `{ type: "delete_message", messageId }` frame to server — triggers `MessageService.deleteMessage`) in `frontend/src/services/websocket/WebSocketService.ts`
 - [ ] T051 [US2] Mount `ChatArea` in `RoomPage`; wire send action through `SignalService.encryptMessage` → WebSocket `message` frame in `frontend/src/pages/room/RoomPage.tsx`
 
-**Checkpoint**: US2 independently functional — real-time E2E-encrypted messaging works; server stores only ciphertext; non-members blocked.
+**Checkpoint**: US2 independently functional — real-time E2E-encrypted messaging works within 1 second (SC-002); owner can delete messages; non-owner cannot; empty messages blocked; server stores only ciphertext; non-members blocked.
 
 ---
 
