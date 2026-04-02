@@ -13,7 +13,7 @@ import {
   RoomsApiError,
 } from '@/lib/roomsApi';
 import { WebSocketService, WsChatMessage, WsDeletedMessage, WsPresenceMessage } from '@/lib/websocket/WebSocketService';
-import { encryptMessage, generateClientMessageId } from '@/lib/signal/signalClient';
+import { encryptMessage, generateClientMessageId, IS_ENCRYPTION_STUB } from '@/lib/signal/signalClient';
 import ChatArea from '@/components/ChatArea';
 import MemberList from '@/components/MemberList';
 import InvitePanel from '@/components/InvitePanel';
@@ -267,6 +267,29 @@ export default function RoomPage() {
           </p>
         </div>
       </header>
+
+      {/* Encryption stub warning — visible only in development until feature 004 ships */}
+      {IS_ENCRYPTION_STUB && (
+        <div
+          role="alert"
+          style={{
+            padding: '6px 24px',
+            background: '#fef3c7',
+            color: '#92400e',
+            fontSize: 12,
+            borderBottom: '1px solid #fde68a',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <span>⚠️</span>
+          <span>
+            <strong>Dev mode:</strong> Messages are NOT encrypted (Signal Protocol stub).
+            Feature <code>004-e2e-encryption</code> must be implemented before production use.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div
