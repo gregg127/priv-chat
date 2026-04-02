@@ -11,6 +11,8 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Transparent WebSocket tunnel: client → gateway (/ws) → rooms-service (/ws).
@@ -75,10 +77,14 @@ public class WebSocketProxyHandler extends AbstractWebSocketHandler {
         try {
             WebSocketSession backendSession = wsClient
                     .execute(backendHandler, backendWsUrl)
-                    .get();
+                    .get(5, TimeUnit.SECONDS);
             backendSessions.put(clientSession.getId(), backendSession);
             log.debug("ws.proxy.backend_connected sessionId={} url={}", clientSession.getId(), backendWsUrl);
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("ws.proxy.backend_connect_interrupted sessionId={}", clientSession.getId());
+            try { clientSession.close(CloseStatus.SERVICE_RESTARTED); } catch (IOException ignored) {}
+        } catch (ExecutionException | TimeoutException e) {
             log.error("ws.proxy.backend_connect_failed sessionId={} error={}", clientSession.getId(), e.getMessage());
             try { clientSession.close(CloseStatus.SERVICE_RESTARTED); } catch (IOException ignored) {}
         }

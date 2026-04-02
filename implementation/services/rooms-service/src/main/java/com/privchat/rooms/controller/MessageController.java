@@ -80,8 +80,9 @@ public class MessageController {
         String username = currentUsername();
         try {
             messageService.deleteMessage(id, messageId, username);
-            // Notify all connected room subscribers so they remove the message
-            // from their in-memory state without requiring a page refresh.
+            // Fanout fires after the transaction commits (messageService.deleteMessage is @Transactional).
+            // This means all DB readers will see the soft-delete before subscribers are notified,
+            // so there is no race between the WS event and a concurrent history fetch.
             chatWebSocketHandler.fanoutDeletedMessage(id, messageId);
             return ResponseEntity.noContent().build();
         } catch (MessageService.MessageException.NotOwner e) {

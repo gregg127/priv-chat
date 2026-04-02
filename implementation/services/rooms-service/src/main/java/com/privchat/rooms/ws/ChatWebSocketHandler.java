@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
@@ -70,6 +71,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ChatWebSocketHandler.class);
 
+    /** Max time in ms to wait for a send to complete before closing the session. */
+    private static final int SEND_TIME_LIMIT_MS  = 5_000;
+    /** Max bytes that may be buffered while waiting for a slow send before closing. */
+    private static final int SEND_BUFFER_LIMIT   = 64 * 1024;
+
     private final JwtService jwtService;
     private final MessageService messageService;
     private final RoomMemberRepository memberRepository;
@@ -77,7 +83,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     /** sessionId → authenticated username */
     private final ConcurrentHashMap<String, String> sessionUsers = new ConcurrentHashMap<>();
-    /** roomId → set of authenticated WebSocket sessions subscribed to that room */
+    /**
+     * sessionId → thread-safe session wrapper for concurrent fanout sends.
+     * Spring's raw WebSocketSession is NOT thread-safe for concurrent sendMessage() calls.
+     * ConcurrentWebSocketSessionDecorator queues sends so multiple broadcast threads
+     * targeting the same subscriber can never interleave and corrupt the WS frame stream.
+     */
+    private final ConcurrentHashMap<String, ConcurrentWebSocketSessionDecorator> decoratedSessions = new ConcurrentHashMap<>();
+    /** roomId → set of decorated sessions subscribed to that room */
     private final ConcurrentHashMap<Long, CopyOnWriteArraySet<WebSocketSession>> roomSessions = new ConcurrentHashMap<>();
 
     public ChatWebSocketHandler(JwtService jwtService,
@@ -92,6 +105,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
+        var decorated = new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, SEND_BUFFER_LIMIT);
+        decoratedSessions.put(session.getId(), decorated);
         log.info("ws.connect sessionId={}", session.getId());
     }
 
@@ -123,8 +138,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String username = sessionUsers.remove(session.getId());
-        // Remove from all room subscription sets
-        roomSessions.values().forEach(sessions -> sessions.remove(session));
+        // Remove decorated wrapper and unsubscribe from all rooms.
+        // We stored the decorator in roomSessions, so we must remove the decorator object — not the raw session.
+        WebSocketSession decorated = decoratedSessions.remove(session.getId());
+        if (decorated != null) {
+            roomSessions.values().forEach(sessions -> sessions.remove(decorated));
+        }
         log.info("ws.disconnect sessionId={} username={} status={}", session.getId(), username, status.getCode());
     }
 
@@ -164,7 +183,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sendError(session, "forbidden", "Not a member of this room");
             return;
         }
-        roomSessions.computeIfAbsent(roomId, k -> new CopyOnWriteArraySet<>()).add(session);
+        // Use the thread-safe decorator so broadcast() can safely deliver messages to this session
+        // from any thread concurrently with other sends.
+        // Note: the confirmation below still goes through the raw session because we're on the
+        // single message-processing thread here — no concurrent send risk at this point.
+        WebSocketSession decorated = decoratedSessions.get(session.getId());
+        if (decorated == null) { sendError(session, "internal_error", "Session not initialized"); return; }
+        roomSessions.computeIfAbsent(roomId, k -> new CopyOnWriteArraySet<>()).add(decorated);
         session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of(
                 "type", "subscribed",
                 "roomId", roomId

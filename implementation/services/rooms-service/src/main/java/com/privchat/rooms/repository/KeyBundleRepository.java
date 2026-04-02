@@ -26,7 +26,13 @@ public class KeyBundleRepository {
 
     // ─── KeyBundle ────────────────────────────────────────────────────────────
 
-    /** Upserts a key bundle for the given user/device. */
+    /** Upserts a key bundle for the given user/device.
+     *
+     * <p>On conflict (same username + device_id) only the <em>signed prekey</em> fields are
+     * rotated — the identity key is intentionally excluded from the UPDATE clause.
+     * Identity keys must be stable per device; silently overwriting them would break all
+     * existing Signal sessions and is a hallmark of a compromise or impersonation attack.
+     */
     public KeyBundle upsertBundle(String username, int deviceId,
                                   byte[] identityKey, int signedPreKeyId,
                                   byte[] signedPreKey, byte[] signedPreKeySig) {
