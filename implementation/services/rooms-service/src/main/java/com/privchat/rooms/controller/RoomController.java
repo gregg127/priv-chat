@@ -3,6 +3,7 @@ package com.privchat.rooms.controller;
 import com.privchat.rooms.controller.dto.CreateRoomRequest;
 import com.privchat.rooms.controller.dto.RoomResponse;
 import com.privchat.rooms.controller.dto.UpdateRoomRequest;
+import com.privchat.rooms.repository.RoomMemberRepository;
 import com.privchat.rooms.repository.RoomRepository;
 import com.privchat.rooms.service.RoomService;
 import org.springframework.http.HttpStatus;
@@ -15,18 +16,24 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * REST controller for all room operations (CRUD).
+ * REST controller for all room operations (CRUD + member list).
  * All endpoints require a valid JWT (enforced by {@link com.privchat.rooms.security.JwtAuthFilter}).
+ *
+ * <p>Rooms are invite-only: {@code GET /rooms} returns only rooms the caller is a member of.
  */
 @RestController
 @RequestMapping("/rooms")
 public class RoomController {
 
     private final RoomRepository roomRepository;
+    private final RoomMemberRepository memberRepository;
     private final RoomService roomService;
 
-    public RoomController(RoomRepository roomRepository, RoomService roomService) {
+    public RoomController(RoomRepository roomRepository,
+                          RoomMemberRepository memberRepository,
+                          RoomService roomService) {
         this.roomRepository = roomRepository;
+        this.memberRepository = memberRepository;
         this.roomService = roomService;
     }
 
@@ -34,11 +41,12 @@ public class RoomController {
 
     /**
      * GET /rooms
-     * Returns all rooms ordered newest-first. Returns [] when empty.
+     * Returns only rooms the authenticated user is a member of (invite-only model).
      */
     @GetMapping
     public ResponseEntity<List<RoomResponse>> listRooms() {
-        List<RoomResponse> rooms = roomRepository.findAll()
+        String username = currentUsername();
+        List<RoomResponse> rooms = roomRepository.findAllByUsername(username)
                 .stream()
                 .map(RoomResponse::from)
                 .toList();
@@ -47,20 +55,29 @@ public class RoomController {
 
     /**
      * GET /rooms/{id}
-     * Returns a single room by ID, or 404 if not found.
+     * Returns a single room with its full member list.
+     * Returns 403 if the caller is not a member, 404 if the room doesn't exist.
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> getRoom(@PathVariable Long id) {
-        return roomRepository.findById(id)
-                .<ResponseEntity<?>>map(room -> ResponseEntity.ok(RoomResponse.from(room)))
-                .orElse(ResponseEntity.status(404).body(Map.of("error", "Room not found")));
+        String username = currentUsername();
+        var roomOpt = roomRepository.findById(id);
+        if (roomOpt.isEmpty()) {
+            return ResponseEntity.status(404).body(Map.of("error", "Room not found"));
+        }
+        var room = roomOpt.get();
+        if (!memberRepository.isMember(id, username)) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
+        var members = memberRepository.findByRoomId(id);
+        return ResponseEntity.ok(RoomResponse.from(room, members));
     }
 
     // ─── Create ───────────────────────────────────────────────────────────────
 
     /**
      * POST /rooms
-     * Creates a new room. Name auto-generated if not provided.
+     * Creates a new room. Creator is automatically added as first member.
      */
     @PostMapping
     public ResponseEntity<?> createRoom(@RequestBody CreateRoomRequest request) {
@@ -81,7 +98,7 @@ public class RoomController {
 
     /**
      * PUT /rooms/{id}
-     * Renames a room. Creator only.
+     * Renames a room. Owner only.
      */
     @PutMapping("/{id}")
     public ResponseEntity<?> updateRoom(@PathVariable Long id,
@@ -105,7 +122,7 @@ public class RoomController {
 
     /**
      * DELETE /rooms/{id}
-     * Deletes a room. Creator only. Returns 204 No Content.
+     * Deletes a room. Owner only. Returns 204 No Content.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteRoom(@PathVariable Long id) {
@@ -127,3 +144,4 @@ public class RoomController {
         return auth.getName();
     }
 }
+

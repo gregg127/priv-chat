@@ -12,10 +12,10 @@ interface RoomCardProps {
 
 /**
  * Displays a room card with name, creator, creation time, and active member count.
- * Shows Rename and Delete buttons only when the current user is the room creator.
+ * Shows Rename and Delete buttons only when the current user is the room owner.
  */
 export default function RoomCard({ room, currentUser, onJoin, onRename, onDelete }: RoomCardProps) {
-  const isCreator = currentUser === room.creatorUsername;
+  const isOwner = currentUser === room.ownerUsername;
 
   function handleRenameClick() {
     if (!onRename) return;
@@ -45,10 +45,10 @@ export default function RoomCard({ room, currentUser, onJoin, onRename, onDelete
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={() => onJoin(room.id)}>Join</button>
-        {isCreator && onRename && (
+        {isOwner && onRename && (
           <button onClick={handleRenameClick}>Rename</button>
         )}
-        {isCreator && onDelete && (
+        {isOwner && onDelete && (
           <button onClick={handleDeleteClick} style={{ color: 'red' }}>Delete</button>
         )}
       </div>

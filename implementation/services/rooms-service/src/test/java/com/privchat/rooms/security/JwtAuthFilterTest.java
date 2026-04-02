@@ -1,5 +1,6 @@
 package com.privchat.rooms.security;
 
+import com.privchat.rooms.repository.UserRoomStatsRepository;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,12 +26,14 @@ import static org.mockito.Mockito.*;
 class JwtAuthFilterTest {
 
     private JwtService jwtService;
+    private UserRoomStatsRepository statsRepository;
     private JwtAuthFilter filter;
 
     @BeforeEach
     void setUp() {
         jwtService = mock(JwtService.class);
-        filter = new JwtAuthFilter(jwtService);
+        statsRepository = mock(UserRoomStatsRepository.class);
+        filter = new JwtAuthFilter(jwtService, statsRepository);
         SecurityContextHolder.clearContext();
     }
 

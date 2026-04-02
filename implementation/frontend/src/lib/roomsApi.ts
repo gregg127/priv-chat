@@ -1,9 +1,30 @@
+export interface MemberDto {
+  username: string;
+  joinedAt: string;
+  isOwner: boolean;
+}
+
 export interface RoomResponse {
   id: number;
   name: string;
   creatorUsername: string;
+  ownerUsername: string;
   createdAt: string;
   activeMemberCount: number;
+  members?: MemberDto[];
+}
+
+export interface MessageResponse {
+  id: number;
+  seq: number;
+  senderUsername: string;
+  ciphertext: string;
+  clientMessageId: string;
+  serverTimestamp: string;
+}
+
+export interface InviteRequest {
+  username: string;
 }
 
 export interface CreateRoomRequest {
@@ -63,10 +84,57 @@ export async function fetchRooms(token: string): Promise<RoomResponse[]> {
 }
 
 /**
- * GET /rooms/{id} — fetch a single room
+ * GET /rooms/{id} — fetch a single room with members
  */
 export async function fetchRoom(id: number, token: string): Promise<RoomResponse> {
   return roomsFetch<RoomResponse>(`/rooms/${id}`, token);
+}
+
+/**
+ * GET /rooms/{id}/messages — paginated history
+ */
+export async function fetchMessages(
+  roomId: number,
+  token: string,
+  beforeSeq = 0,
+  limit = 50
+): Promise<MessageResponse[]> {
+  const params = new URLSearchParams();
+  if (beforeSeq > 0) params.set('beforeSeq', String(beforeSeq));
+  if (limit !== 50) params.set('limit', String(limit));
+  const qs = params.toString() ? `?${params}` : '';
+  return roomsFetch<MessageResponse[]>(`/rooms/${roomId}/messages${qs}`, token);
+}
+
+/**
+ * DELETE /rooms/{id}/messages/{messageId} — soft-delete a message (owner only)
+ */
+export async function deleteMessage(
+  roomId: number,
+  messageId: number,
+  token: string
+): Promise<void> {
+  return roomsFetch<void>(`/rooms/${roomId}/messages/${messageId}`, token, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * POST /rooms/{id}/invites — invite a user to the room (owner only)
+ */
+export async function inviteUser(
+  roomId: number,
+  username: string,
+  token: string
+): Promise<{ username: string; joinedAt: string; joinSeq: number }> {
+  return roomsFetch<{ username: string; joinedAt: string; joinSeq: number }>(
+    `/rooms/${roomId}/invites`,
+    token,
+    {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    }
+  );
 }
 
 /**

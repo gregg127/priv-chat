@@ -63,3 +63,10 @@ npm run journal
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
+
+## Active Technologies
+- TypeScript (frontend + backend) + Signal Protocol (`@signalapp/libsignal-client` via WASM), WebCrypto API (browser), WebSocket (native browser + server), Node.js backend (003-room-page-chat)
+- PostgreSQL (ciphertext messages, key bundles, room metadata); IndexedDB (client-side key material, session state) (003-room-page-chat)
+
+## Recent Changes
+- 003-room-page-chat: Added TypeScript (frontend + backend) + Signal Protocol (`@signalapp/libsignal-client` via WASM), WebCrypto API (browser), WebSocket (native browser + server), Node.js backend

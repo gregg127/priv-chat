@@ -121,8 +121,8 @@ export default function RoomsPage() {
     }
   }
 
-  function handleJoin(_roomId: number) {
-    // Chat page will be implemented in feature 003
+  function handleJoin(roomId: number) {
+    router.push(`/portal/rooms/${roomId}`);
   }
 
   async function handleRename(roomId: number, newName: string) {
