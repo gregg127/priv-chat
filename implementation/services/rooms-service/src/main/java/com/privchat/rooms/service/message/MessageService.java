@@ -110,8 +110,10 @@ public class MessageService {
                     "room#" + roomId, actorUsername);
             throw new MessageException.NotOwner("You can only delete your own messages");
         }
-        return messageRepository.softDelete(messageId)
+        Message deleted = messageRepository.softDelete(messageId)
                 .orElseThrow(() -> new MessageException.NotFound("Message not found"));
+        auditLogRepository.insert("DELETE_MESSAGE", roomId, "room#" + roomId, actorUsername);
+        return deleted;
     }
 
     // ─── Exception hierarchy ──────────────────────────────────────────────────

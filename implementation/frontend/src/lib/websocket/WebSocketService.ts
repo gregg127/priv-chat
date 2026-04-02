@@ -22,6 +22,8 @@ export type WsMessageType =
   | 'unsubscribed'
   | 'message'
   | 'message_deleted'
+  | 'member_joined'
+  | 'member_left'
   | 'ack'
   | 'error';
 
@@ -52,12 +54,19 @@ export interface WsDeletedMessage extends WsInboundMessage {
   messageId: number;
 }
 
+export interface WsPresenceMessage extends WsInboundMessage {
+  type: 'member_joined' | 'member_left';
+  roomId: number;
+  username: string;
+}
+
 type MessageHandler = (msg: WsInboundMessage) => void;
 
 export class WebSocketService {
   private ws: WebSocket | null = null;
   private token: string;
   private authenticated = false;
+  private connectCount = 0;
   private pendingSubscriptions: Set<number> = new Set();
   private handlers: Map<string, Set<MessageHandler>> = new Map();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -71,6 +80,7 @@ export class WebSocketService {
 
   private connect() {
     if (this.closed) return;
+    this.connectCount++;
 
     // NEXT_PUBLIC_* vars are embedded at Docker build time.
     // Use || so an empty-string default also triggers the same-origin fallback.
@@ -93,10 +103,16 @@ export class WebSocketService {
         const msg = JSON.parse(event.data) as WsInboundMessage;
         if (msg.type === 'auth_ok') {
           this.authenticated = true;
+          const isReconnect = this.connectCount > 1;
           // Re-subscribe to all pending rooms
           this.pendingSubscriptions.forEach(roomId => {
             this.ws!.send(JSON.stringify({ type: 'subscribe', roomId }));
           });
+          // Emit a special 'reconnected' event so consumers can trigger catch-up.
+          // connectCount > 1 means WS was lost and re-established.
+          if (isReconnect) {
+            this.emit('reconnected', msg);
+          }
         }
         this.emit(msg.type, msg);
         this.emit('*', msg);

@@ -57,8 +57,9 @@ A participant inside a room can type and send a message visible only to other pe
 3. **Given** a user is not a member of a room, **When** they attempt to access the room's chat, **Then** they are denied access and see an appropriate message
 4. **Given** a user sends a message, **When** it is delivered, **Then** the message shows the sender's name and the time it was sent
 5. **Given** a user sends a message under normal network conditions, **When** it is delivered, **Then** it appears in the chat for all room members within 1 second (SC-002)
-6. **Given** a user is the room owner, **When** they select the delete action on a specific message, **Then** that message is immediately removed from the chat view for all room members and cannot be retrieved (FR-017)
-7. **Given** a user is not the room owner, **When** they view any message in the chat, **Then** no delete action is visible or accessible to them (FR-017)
+6. **Given** a user is a member of a room, **When** they select the delete action on one of their own messages, **Then** that message is immediately removed from the chat view for all room members and cannot be retrieved (FR-017)
+7. **Given** a user views messages they did not send, **When** they look at those messages, **Then** no delete action is visible or accessible to them (FR-017)
+8. **Given** the room owner views any message in the chat, **When** they look at messages sent by others, **Then** no delete action is visible; the owner may only delete their own messages (FR-017)
 8. **Given** a user is composing a message, **When** they attempt to submit a message that is empty or contains only whitespace characters, **Then** the system prevents submission and displays a validation error; the message is not sent (FR-020)
 
 ---
@@ -122,7 +123,7 @@ The room owner can invite other users to join the room by typing their username 
 - **FR-007**: Each message MUST display the sender's name and the time it was sent
 - **FR-008**: The chat area MUST display messages in chronological order
 - **FR-009**: System MUST load and display the full persistent message history for a member starting from the point they were invited; messages sent before a member's invite date MUST NOT be accessible to them; messages are retained indefinitely until deleted by the room owner
-- **FR-017**: The room owner MUST be able to delete individual messages from the room via a delete action visible exclusively to the owner on each message; deleted messages MUST be immediately removed from the chat view for all members and MUST NOT be retrievable
+- **FR-017**: Each member MUST be able to delete their own messages via a delete action visible exclusively to the sender on each of their own messages; deleted messages MUST be immediately removed from the chat view for all members via WebSocket broadcast and MUST NOT be retrievable. Room owners do NOT have additional delete authority over other members' messages — this is intentional to protect privacy of contributions.
 - **FR-018**: When a member reconnects after a disconnection, the system MUST automatically deliver all messages they missed during the gap, in chronological order
 - **FR-019**: When the room owner's account is deleted, ownership MUST automatically transfer to the longest-standing member (earliest invite timestamp); the room and all messages MUST remain accessible
 - **FR-010**: System MUST prevent unauthenticated or non-member users from viewing or sending messages

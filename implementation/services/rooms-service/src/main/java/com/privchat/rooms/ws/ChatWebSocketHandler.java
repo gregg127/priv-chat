@@ -138,11 +138,19 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String username = sessionUsers.remove(session.getId());
-        // Remove decorated wrapper and unsubscribe from all rooms.
-        // We stored the decorator in roomSessions, so we must remove the decorator object — not the raw session.
         WebSocketSession decorated = decoratedSessions.remove(session.getId());
         if (decorated != null) {
-            roomSessions.values().forEach(sessions -> sessions.remove(decorated));
+            // Broadcast member_left to all rooms this session was subscribed to (FR-003).
+            roomSessions.forEach((roomId, sessions) -> {
+                if (sessions.remove(decorated) && username != null) {
+                    // Only broadcast if this user has no other active sessions in this room
+                    boolean stillPresent = sessions.stream()
+                            .anyMatch(s -> username.equals(sessionUsers.get(s.getId())));
+                    if (!stillPresent) {
+                        broadcastPresence(roomId, "member_left", username);
+                    }
+                }
+            });
         }
         log.info("ws.disconnect sessionId={} username={} status={}", session.getId(), username, status.getCode());
     }
@@ -194,6 +202,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "type", "subscribed",
                 "roomId", roomId
         ))));
+        // Broadcast member_joined only if this is the user's first active session in this room (FR-003).
+        // If the user already had another device subscribed, the member list hasn't changed.
+        long userSessionCount = roomSessions.get(roomId).stream()
+                .filter(s -> username.equals(sessionUsers.get(s.getId())))
+                .count();
+        if (userSessionCount <= 1) {
+            broadcastPresence(roomId, "member_joined", username);
+        }
         log.info("ws.subscribe sessionId={} username={} roomId={}", session.getId(), username, roomId);
     }
 
@@ -319,6 +335,24 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     log.warn("ws.broadcast_send_error sessionId={} roomId={}", s.getId(), roomId);
                 }
             }
+        }
+    }
+
+    /**
+     * Broadcasts a presence event ({@code member_joined} or {@code member_left}) to all
+     * subscribers of a room. Used to implement FR-003 real-time member list updates.
+     * One-device-per-user deduplication is enforced by the caller.
+     */
+    private void broadcastPresence(Long roomId, String eventType, String username) {
+        try {
+            String payload = objectMapper.writeValueAsString(Map.of(
+                    "type", eventType,
+                    "roomId", roomId,
+                    "username", username
+            ));
+            broadcast(roomId, payload);
+        } catch (Exception e) {
+            log.error("ws.presence_serialize_error roomId={} event={}", roomId, eventType, e);
         }
     }
 

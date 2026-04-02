@@ -12,7 +12,7 @@ import {
   MessageResponse,
   RoomsApiError,
 } from '@/lib/roomsApi';
-import { WebSocketService, WsChatMessage, WsDeletedMessage } from '@/lib/websocket/WebSocketService';
+import { WebSocketService, WsChatMessage, WsDeletedMessage, WsPresenceMessage } from '@/lib/websocket/WebSocketService';
 import { encryptMessage, generateClientMessageId } from '@/lib/signal/signalClient';
 import ChatArea from '@/components/ChatArea';
 import MemberList from '@/components/MemberList';
@@ -110,6 +110,49 @@ export default function RoomPage() {
         setHistory(prev => prev.filter(m => m.id !== del.messageId));
         setLiveMessages(prev => prev.filter(m => m.id !== del.messageId));
       }
+    });
+
+    // FR-003: Real-time member list updates — server broadcasts member_joined/member_left
+    // when a user's first (or last) device subscribes to (or disconnects from) the room.
+    ws.on('member_joined', (msg) => {
+      const presence = msg as WsPresenceMessage;
+      if (presence.roomId === roomId) {
+        setRoom(prev => {
+          if (!prev) return prev;
+          const alreadyMember = prev.members?.some(m => m.username === presence.username);
+          if (alreadyMember) return prev;
+          return {
+            ...prev,
+            activeMemberCount: prev.activeMemberCount + 1,
+            members: [...(prev.members ?? []), { username: presence.username, isOwner: false, joinedAt: new Date().toISOString() }],
+          };
+        });
+      }
+    });
+
+    ws.on('member_left', (msg) => {
+      const presence = msg as WsPresenceMessage;
+      if (presence.roomId === roomId) {
+        setRoom(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            activeMemberCount: Math.max(0, prev.activeMemberCount - 1),
+            // Do NOT remove from members — the person is still a member, just offline.
+            // The member list shows who belongs to the room, not who is currently connected.
+          };
+        });
+      }
+    });
+
+    // FR-018: Catch-up on reconnect — fetch any messages missed while disconnected.
+    // 'reconnected' fires on auth_ok after the first connection (connectCount > 1).
+    ws.on('reconnected', () => {
+      if (!tokenRef.current) return;
+      fetchMessages(roomId, tokenRef.current).then(missed => {
+        setHistory(missed);
+        setLiveMessages([]);
+      }).catch(() => { /* silently ignore — existing state is still valid */ });
     });
 
     return () => {

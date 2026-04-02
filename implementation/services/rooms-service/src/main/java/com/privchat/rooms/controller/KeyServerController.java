@@ -3,6 +3,7 @@ package com.privchat.rooms.controller;
 import com.privchat.rooms.controller.dto.ReplenishPreKeysRequest;
 import com.privchat.rooms.controller.dto.UploadKeyBundleRequest;
 import com.privchat.rooms.model.KeyBundle;
+import com.privchat.rooms.repository.AuditLogRepository;
 import com.privchat.rooms.service.keyserver.KeyServerService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,9 +30,12 @@ import java.util.Map;
 public class KeyServerController {
 
     private final KeyServerService keyServerService;
+    private final AuditLogRepository auditLogRepository;
 
-    public KeyServerController(KeyServerService keyServerService) {
+    public KeyServerController(KeyServerService keyServerService,
+                               AuditLogRepository auditLogRepository) {
         this.keyServerService = keyServerService;
+        this.auditLogRepository = auditLogRepository;
     }
 
     /**
@@ -43,6 +47,9 @@ public class KeyServerController {
     public ResponseEntity<?> uploadBundle(@RequestBody UploadKeyBundleRequest request) {
         String username = currentUsername();
         KeyBundle bundle = keyServerService.uploadBundle(username, request);
+        // Audit key bundle registration — required by constitution §II security requirements.
+        // Logs the event without key material (zero-knowledge logging).
+        auditLogRepository.insert("KEY_BUNDLE_REGISTER", null, null, username);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "username", bundle.username(),
                 "deviceId", bundle.deviceId(),
